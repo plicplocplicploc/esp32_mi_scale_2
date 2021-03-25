@@ -1,6 +1,6 @@
 /*********
  * ESP32 Xiaomi Body Scale to MQTT/AppDaemon bridge
- * The ESP32 scans BLE for the scale and posts it 
+ * The ESP32 scans BLE for the scale and posts it
  * to an MQTT topic when found.
  * AppDaemon processes the data and creates sensors
  * in Home Assistant
@@ -340,8 +340,12 @@ void ScanBLE()
 
   if (discoveredDevice.haveServiceData())
   {
-    std::string md = discoveredDevice.getServiceData();
-    uint8_t *mdp = (uint8_t *)discoveredDevice.getServiceData().data();
+    // Fix: we're only interested in the latest entry, not all entries, so we
+    // compute lastEntry
+    int lastEntry = discoveredDevice.getServiceDataCount() - 1;
+    std::string md = discoveredDevice.getServiceData(lastEntry);
+    uint8_t *mdp = (uint8_t *)discoveredDevice.getServiceData(lastEntry).data();
+
     char *pHex = BLEUtils::buildHexData(nullptr, mdp, md.length());
     hex = pHex;
     Serial.println(hex);
