@@ -51,9 +51,9 @@ def mqtt_on_message(client, userdata, msg):
     logger.info(f'Received payload: {msg.payload}')
     data = json.loads(msg.payload)
 
-    # Weight has to be within the [10-200] range. Metrics calculation will fail
-    # it not within that range. Probably a bogus measurement anyway. Just move
-    # on.
+    # Weight has to be within the 10kg-200kg range. Metrics calculation will
+    # fail if not within that range. Probably a bogus measurement anyway. Just
+    # move on.
     weight = float(data['Weight'])
     if not 10 < weight < 200:
         logger.info('Weight value bogus, ignoring')
@@ -63,7 +63,8 @@ def mqtt_on_message(client, userdata, msg):
     metrics = bodyMetrics(
         weight=weight,
         height=float(config['garmin']['height']),
-        age=float((datetime.date.today() - config['garmin']['dateOfBirth']).days / 365.25),
+        age=float((datetime.date.today() -
+                  config['garmin']['dateOfBirth']).days / 365.25),
         sex=config['garmin']['sex'],
         impedance=float(data['Impedance'])
     )
@@ -89,12 +90,14 @@ def mqtt_on_message(client, userdata, msg):
     fit.finish()
 
     garmin = GarminConnect()
-    garminSession = garmin.login(config['garmin']['username'], config['garmin']['password'])
+    garminSession = garmin.login(
+        config['garmin']['username'], config['garmin']['password'])
     req = garmin.upload_file(fit.getvalue(), garminSession)
     if req:
         logger.info('Upload to Garmin succeeded')
     else:
         logger.info('Upload to Garmin failed')
+
 
 if __name__ == '__main__':
     main()
