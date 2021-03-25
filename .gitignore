@@ -5,7 +5,7 @@
 output
 
 # Let's not share all my personal stuff with the whole world
-copy_with_creds.ino
+creds_settings.h
 config.yml
 *.log
 

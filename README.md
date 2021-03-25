@@ -7,13 +7,15 @@ The Appdaemon app will create all sensors automatically and send notifications t
 * Slight change in the way detected devices are computed. The newer BLE lib breaks compatibility with the way the original sketch worked, see [this](https://github.com/espressif/arduino-esp32/issues/4627#issuecomment-751400018). Slight change in the `MyAdvertisedDeviceCallbacks` class and in `ScanBLE`.
 * Turn on the ESP32 onboard LED for a bit after MQTT update.
 * Uses new lib (whatever it changes): https://github.com/rando-calrissian/esp32_xiaomi_mi_2_hass/issues/1
+* Move ESP32 sketch's config to a separate file.
 
 ## Still to do:
+* Update readme. Instructions for templates, deployment, etc.
 * I've made a quick&dirty python MQTT listener that in turn sends data to Garmin Connect.
 * Adjust the `appdaemon` code with my changes.
 * Add support for Garmin Connect via `appdaemon`.
 
-## Acknowledgements: 
+## Acknowledgements:
 This builds on top of the work of lolouk44 https://github.com/lolouk44/xiaomi_mi_scale and directly uses the python functions of that tool to perform its measurements.
 
 ## Requirements:
