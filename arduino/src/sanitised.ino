@@ -7,6 +7,8 @@
  * Uses the formulas and processing from
  * https://github.com/lolouk44/xiaomi_mi_scale
  * to calculate various metrics from the scale data
+ *
+ * https://github.com/wiecosystem/Bluetooth/blob/master/doc/devices/huami.health.scale2.md
 *********/
 
 #include <Arduino.h>
