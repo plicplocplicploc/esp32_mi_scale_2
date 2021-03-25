@@ -43,7 +43,7 @@ def main():
 
 
 def mqtt_on_connect(client, userdata, flags, rc):
-    logger.info(f'Connected to MQTT brokerr, result code {rc}')
+    logger.info(f'Connected to MQTT broker, result code {rc}')
     client.subscribe(config['mqtt']['topic'])
 
 
@@ -51,9 +51,17 @@ def mqtt_on_message(client, userdata, msg):
     logger.info(f'Received payload: {msg.payload}')
     data = json.loads(msg.payload)
 
+    # Weight has to be within the [10-200] range. Metrics calculation will fail
+    # it not within that range. Probably a bogus measurement anyway. Just move
+    # on.
+    weight = float(data['Weight'])
+    if not 10 < weight < 200:
+        logger.info('Weight value bogus, ignoring')
+        return
+
     # Compute data
     metrics = bodyMetrics(
-        weight=float(data['Weight']),
+        weight=weight,
         height=float(config['garmin']['height']),
         age=float((datetime.date.today() - config['garmin']['dateOfBirth']).days / 365.25),
         sex=config['garmin']['sex'],
