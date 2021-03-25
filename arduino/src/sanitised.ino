@@ -279,7 +279,8 @@ void publish()
     reconnect();
   }
 
-  mqtt_client.publish(mqtt_topic_attributes.c_str(), publish_data.c_str(), true);
+  // Change `false` to `true` to retain message on MQTT queue
+  mqtt_client.publish(mqtt_topic_attributes.c_str(), publish_data.c_str(), false);
 
   Serial.print("Publishing : ");
   Serial.println(publish_data.c_str());
