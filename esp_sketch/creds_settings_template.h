@@ -33,3 +33,21 @@ const char *mqtt_stat = "stat/";
 const char *mqtt_attributes = "/attributes";
 const char *mqtt_telemetry = "tele/";
 const char *mqtt_tele_status = "/status";
+
+// Event durations (all milliseconds)
+#define waitBeforeRetryBLE 500
+#define maxScanDuration 8000
+#define waitForImpedance 1500
+#define waitBeforeRetryWiFi 100
+#define waitBeforeRetryMQTT 100
+#define statusBlink 8000
+#define successBlinkOn 800
+#define successBlinkOff 200
+#define failureBlinkOn 50
+#define failureBlinkOff 50
+#define mainLoopDelay 200
+
+// Other constants
+#define maxNoImpedanceCount 5
+#define maxWiFiAttempts 20
+#define maxMQTTAttempts 20
