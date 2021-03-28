@@ -1,0 +1,316 @@
+/*********
+ * ESP32 Xiaomi Body Scale to MQTT/AppDaemon bridge
+ * The ESP32 scans BLE for the scale and posts it
+ * to an MQTT topic when found.
+ * AppDaemon processes the data and creates sensors
+ * in Home Assistant
+ * Uses the formulas and processing from
+ * https://github.com/lolouk44/xiaomi_mi_scale
+ * to calculate various metrics from the scale data
+ *
+ * https://github.com/wiecosystem/Bluetooth/blob/master/doc/devices/huami.health.scale2.md
+*********/
+
+#include <Arduino.h>
+#include <PubSubClient.h>
+#include <WiFiUdp.h>
+#include <WiFi.h>
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEScan.h>
+#include <BLEAdvertisedDevice.h>
+#include <EEPROM.h>
+
+#include "creds_settings.h"
+
+#define STRING_SIZE_STORAGE 27
+
+// Globals
+BLEAdvertisedDevice discoveredDevice;
+WiFiClient espClient;
+PubSubClient mqtt_client(espClient);
+
+// Helpers
+int16_t stoi(String input, uint16_t index1)
+{
+  return (int16_t)(strtol(input.substring(index1, index1 + 2).c_str(), NULL, 16));
+}
+
+int16_t stoi2(String input, uint16_t index1)
+{
+  return (int16_t)(strtol((input.substring(index1 + 2, index1 + 4) + input.substring(index1, index1 + 2)).c_str(), NULL, 16));
+}
+
+void connectWifiMQTT()
+{
+  // WiFi
+  Serial.println("Connecting to WiFi...");
+  uint64_t startTime = millis();
+  uint64_t untilTime = startTime + MAX_WIFI_ATTEMPT_DURATION;
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  while (millis() < untilTime)
+  {
+    if (WiFi.status() == WL_CONNECTED)
+      break;
+    else
+      delay(500);
+  }
+
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    uint64_t timeTaken = (millis() - startTime) / 1000;
+    Serial.print("WiFi connected, established connexion in ");
+    Serial.print(timeTaken);
+    Serial.print("s");
+    Serial.println("");
+  }
+  else
+  {
+    Serial.println("Could not connect to WiFi, blinking then deepsleeping");
+    blinkThenSleep(false);
+  }
+
+  // MQTT
+  mqtt_client.setServer(MQTT_SERVER, MQTT_PORT);
+  if (mqtt_client.connect(MQTT_CLIENTID, MQTT_USERNAME, MQTT_PASSWORD))
+  {
+    Serial.println("MQTT connected");
+  }
+  else
+  {
+    Serial.println("");
+    Serial.println("Could not connect to MQTT, blinking then deepsleeping");
+    blinkThenSleep(false);
+  }
+}
+
+void disconnectWiFiMQTT()
+{
+  mqtt_client.disconnect();
+  WiFi.disconnect();
+}
+
+bool publish(String parsedData)
+{
+  Serial.print("Publishing... ");
+  Serial.println(parsedData.c_str());
+  Serial.print("to : ");
+  Serial.println(MQTT_TOPIC.c_str());
+
+  // Change `false` to `true` to retain message on MQTT queue
+  bool publishSuccess = mqtt_client.publish(MQTT_TOPIC.c_str(), parsedData.c_str(), false);
+  return publishSuccess;
+}
+
+class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks
+{
+  void onResult(BLEAdvertisedDevice advertisedDevice)
+  {
+    Serial.print(".");
+    if (advertisedDevice.getAddress().toString() == SCALE_MAC_ADDRESS)
+    {
+      discoveredDevice = advertisedDevice;
+      BLEScan *pBLEScan = BLEDevice::getScan(); // found what we want, stop now
+      pBLEScan->stop();
+    }
+  }
+};
+
+bool scanBle()
+{
+  BLEDevice::init("");
+  BLEScan *pBLEScan = BLEDevice::getScan();
+  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+  pBLEScan->setActiveScan(true);
+  pBLEScan->setInterval(0x50);
+  pBLEScan->setWindow(0x30);
+  pBLEScan->start(MAX_BLE_SCAN_DURATION / 1000);
+
+  if (discoveredDevice.haveServiceData())
+    return true;
+  else
+    return false;
+}
+
+void blinkThenSleep(bool successStatus)
+{
+  int blinkOn = successStatus ? SUCCESS_BLINK_ON : FAILURE_BLINK_ON;
+  int blinkOff = successStatus ? SUCCESS_BLINK_OFF : FAILURE_BLINK_OFF;
+  uint64_t untilTime = millis() + BLINK_FOR;
+  while (millis() < untilTime)
+  {
+    digitalWrite(ONBOARD_LED, LOW); // that means pull-up low --> LED ON
+    delay(blinkOn);
+    digitalWrite(ONBOARD_LED, HIGH); // that means pull-up high --> LED OFF
+    delay(blinkOff);
+  }
+  esp_deep_sleep_start();
+}
+
+String readScaleData()
+{
+  // We're only interested in the latest entry, not all entries.
+  int lastEntry = discoveredDevice.getServiceDataCount() - 1;
+  std::string md = discoveredDevice.getServiceData(lastEntry);
+  uint8_t *mdp = (uint8_t *)discoveredDevice.getServiceData(lastEntry).data();
+
+  return BLEUtils::buildHexData(nullptr, mdp, md.length());
+}
+
+String processScaleData()
+{
+  // Watch out for stale data
+  String fromEEPROM = EEPROM.readString(0);
+  String scaleData;
+  for (int i = 0; i < MAX_WEIGHT_READINGS_STALE; i++)
+  {
+    scaleData = readScaleData();
+    if (fromEEPROM.compareTo(scaleData) != 0)
+    {
+      Serial.println("Fresh data from scale, storing and moving forward");
+      EEPROM.writeString(0, scaleData);
+      EEPROM.commit();
+      break;
+    }
+    else if (i == MAX_WEIGHT_READINGS_STALE - 1)
+    {
+      Serial.println("No fresh data, blinking then deepsleeping");
+      blinkThenSleep(false);
+    }
+    else
+    {
+      Serial.print("Current scale and EEPROM values are identical on attempt ");
+      Serial.print(i + 1);
+      Serial.print(" of ");
+      Serial.print(MAX_WEIGHT_READINGS_STALE);
+      Serial.println("");
+      delay(DELAY_BEFORE_REREAD_STALE);
+      continue;
+    }
+  }
+
+  // At this point we have fresh data stored in scaleData
+  float weight = stoi2(scaleData, 22) * 0.01f / 2; // TODO: that probably depends on scale settings? ok for kg
+  float impedance;
+
+  // Check for impedance and retry if needed
+  bool needReread = false;
+  for (int i = 0; i < MAX_WEIGHT_READINGS_IMPEDANCE; i++)
+  {
+    if (needReread)
+    {
+      scaleData = readScaleData();
+      EEPROM.writeString(0, scaleData); // TODO: there's probably a more efficient way than storing multiple times
+      EEPROM.commit();
+    }
+
+    impedance = stoi2(scaleData, 18) * 0.01f;
+    if (impedance > 0)
+    {
+      Serial.println("Impedance value okay");
+      break;
+    }
+    else if (i == MAX_WEIGHT_READINGS_IMPEDANCE - 1)
+    {
+      Serial.print("No impedance on attempt ");
+      Serial.print(i + 1);
+      Serial.print(" of ");
+      Serial.print(MAX_WEIGHT_READINGS_IMPEDANCE);
+      Serial.println("");
+      Serial.println("No impedance value found, moving forward");
+      break;
+    }
+    else
+    {
+      Serial.print("No impedance on attempt ");
+      Serial.print(i + 1);
+      Serial.print(" of ");
+      Serial.print(MAX_WEIGHT_READINGS_IMPEDANCE);
+      Serial.println("");
+      needReread = true;
+      delay(DELAY_BEFORE_REREAD_IMPEDANCE);
+    }
+  }
+
+  // Other readings
+  int user = stoi(scaleData, 6);
+  int units = stoi(scaleData, 0);
+  String strUnits;
+  if (units == 1)
+    strUnits = "jin";
+  else if (units == 3)
+    strUnits = "lbs";
+  // it appears that kg is the default
+  else // if (units == 2)
+    strUnits = "kg";
+
+  // Prepare return string
+  String time = String(String(stoi2(scaleData, 4)) + " " + String(stoi(scaleData, 8)) + " " + String(stoi(scaleData, 10)) + " " + String(stoi(scaleData, 12)) + " " + String(stoi(scaleData, 14)) + " " + String(stoi(scaleData, 16)));
+  String parsedData =
+      String("{\"Weight\":\"") +
+      String(weight) +
+      String("\", \"Impedance\":\"") +
+      String(impedance) +
+      String("\", \"Units\":\"") +
+      String(strUnits) +
+      String("\", \"User\":\"") +
+      String(user) +
+      String("\", \"Timestamp\":\"") +
+      time +
+      String("\"}");
+
+  return parsedData;
+}
+
+void doBleScan()
+{
+  Serial.println("Scanning BLE");
+  if (scanBle())
+  {
+    Serial.println(" scale found, will now process data");
+    Serial.println("");
+  }
+  else
+  {
+    Serial.println("");
+    Serial.println("Could not find scale, blinking then deepsleeping");
+    blinkThenSleep(false);
+  }
+}
+
+void setup()
+{
+  Serial.begin(115200);
+
+  EEPROM.begin(STRING_SIZE_STORAGE);
+
+  digitalWrite(ONBOARD_LED, HIGH);
+  pinMode(ONBOARD_LED, OUTPUT);
+
+  Serial.println("Setup finished");
+}
+
+void loop()
+{
+  // Not exactly a loop actually :)
+
+  // BLE scan
+  doBleScan();
+
+  // Scale present (discoveredDevice): get/save/compare scale data
+  String parsedData = processScaleData();
+
+  // Establish WiFi and MQTT connexions
+  connectWifiMQTT();
+
+  // Publish on MQTT
+  bool successStatus = publish(parsedData);
+
+  // Disconnect
+  disconnectWiFiMQTT();
+
+  Serial.println("All done, going to sleep");
+
+  // Blink and sleep
+  blinkThenSleep(successStatus);
+}

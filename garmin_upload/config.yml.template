@@ -10,4 +10,4 @@ mqtt:
   port: 8884
   username: mqttUser
   password: mqttPassword
-  topic: stat/scale/attributes    # leave as is
+  topic: scale    # leave as is
