@@ -11,12 +11,13 @@
 * Listener that uploads data to Garmin Connect.
 
 ## Known problems and to-do
+* Adjust config to prevent incomplete measurements.
+* Right now the config (units and time) is re-written every time. Instead retrieve instructions from an MQTT queue at start-up.
 * NTP sometimes times out... add a watchdog.
 * Occasional crash?
 * Add a user weight range in user config and ignore values outside of that range (python side).
 * Units: kg and lbs are okay, setting catty shows a different value on screen (not really what it should be?) and still reports kg via BLE.
 * I haven't touched the `appdaemon` side of things (related to Home Assistant). The `garmin_upload` and `appdaemon` should be merged where possible.
-* Adjust config to prevent incomplete measurements!
 
 ## How to
 * Power on the ESP32 and weigh yourself.
