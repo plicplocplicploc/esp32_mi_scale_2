@@ -3,267 +3,41 @@
 #include <ezTime.h>
 #include <BLEAdvertisedDevice.h>
 #include <BLEDevice.h>
+#include <PubSubClient.h>
 
-#include "creds_settings.h"
+#include "usersettings.h"
+#include "settings.h"
 
 // Globals
+BLEClient *pClient = NULL;
+BLEScan *pBLEScan = NULL;
 BLEAdvertisedDevice *pDiscoveredDevice = NULL;
 BLERemoteService *pBodyCompositionService = NULL;
 BLERemoteService *pHuamiConfigurationService = NULL;
 BLERemoteCharacteristic *pBodyCompositionHistoryCharacteristic = NULL;
 BLERemoteCharacteristic *pCurrentTimeCharacteristic = NULL;
 BLERemoteCharacteristic *pScaleConfigurationCharacteristic = NULL;
-bool bleConnected = false;
-bool sendAckNeeded = false;
 Timezone localTime;
 size_t size;
+WiFiClient espClient;
+PubSubClient mqtt_client(espClient);
 
 // Convenience
 #define SUCCESS true
 #define FAILURE false
 
-void setup()
-{
-  Serial.begin(115200);
-
-  digitalWrite(ONBOARD_LED, HIGH);
-  pinMode(ONBOARD_LED, OUTPUT);
-
-  // TODO: what if no WiFi?
-
-  // Set up time
-  Serial.println("Connecting to WiFi");
-  wifiConnect();
-  Serial.println("WiFi connected");
-  waitForSync(); // ezTime setup
-  localTime.setLocation(TIMEZONE);
-  Serial.println("Local time: " + localTime.dateTime());
-  wifiDisconnect();
-  Serial.println("WiFi disconnected");
-
-  // Look for scale and enable notifications
-  Serial.println("Scanning BLE");
-  if (scanBle())
-    Serial.println("Scale found, now initialising services");
-  else
-  {
-    Serial.println("Cannot find scale, going to sleep");
-    blinkThenSleep(FAILURE);
-  }
-  connectToScale();
-  configureScale();
-}
-
-void loop()
-{
-  askForMeasurement();
-  delay(3000);
-}
-
+// These callbacks need to be defined here
 class MyClientCallback : public BLEClientCallbacks
 {
   void onConnect(BLEClient *pclient)
   {
-    Serial.println("MyClientCallback: BLE client connected");
+    Serial.println("BLE client connected");
   }
   void onDisconnect(BLEClient *pclient)
   {
-    Serial.println("MyClientCallback: BLE client disconnected");
-    bleConnected = false;
-    pDiscoveredDevice = NULL;
+    Serial.println("BLE client disconnected");
   }
 };
-
-void configureScale()
-{
-  // Set scale units
-  Serial.println("Setting scale units");
-  uint8_t setUnitCmd[] = {0x06, 0x04, 0x00, SCALE_UNIT};
-  size = 4;
-  pScaleConfigurationCharacteristic->writeValue(setUnitCmd, size, true);
-
-  // Set time
-  Serial.println("Setting scale time");
-  uint16_t year = localTime.year();
-  uint8_t month = localTime.month();
-  uint8_t day = localTime.day();
-  uint8_t hour = localTime.hour();
-  uint8_t minute = localTime.minute();
-  uint8_t second = localTime.second();
-  uint8_t yearLeft = (uint8_t)(year >> 8);
-  uint8_t yearRight = (uint8_t)year;
-
-  uint8_t dateTimeByte[] = {yearRight, yearLeft, month, day, hour, minute, second, 0x03, 0x00, 0x00};
-  size = 10;
-  pCurrentTimeCharacteristic->writeValue(dateTimeByte, size, true);
-
-  // Enable notifications. Still need an extra step to actually receive them.
-  Serial.println("Register for notifications");
-  pBodyCompositionHistoryCharacteristic->registerForNotify(notifyCallback);
-
-  // Configure scale to get only last measurement
-  Serial.println("Asking for last measurement only");
-  uint8_t userIdentifier[5] = {0x01, 0xff, 0xff, USER_ID >> 8, USER_ID};
-  size = 5;
-  pBodyCompositionHistoryCharacteristic->writeValue(userIdentifier, size, true);
-}
-
-void askForMeasurement()
-{
-  // Ask for measurements
-  Serial.println("Requesting measurement");
-  pBodyCompositionHistoryCharacteristic->writeValue(uint8_t{0x02}, true);
-}
-
-int16_t stoi(String input, uint16_t index1)
-{
-  return (int16_t)(strtol(input.substring(index1, index1 + 2).c_str(), NULL, 16));
-}
-
-int16_t stoi2(String input, uint16_t index1)
-{
-  return (int16_t)(strtol((input.substring(index1 + 2, index1 + 4) + input.substring(index1, index1 + 2)).c_str(), NULL, 16));
-}
-
-void notifyCallback(
-    BLERemoteCharacteristic *pBLERemoteCharacteristic,
-    uint8_t *pData,
-    size_t length,
-    bool isNotify)
-{
-  // Nothing to do here
-  if (pData == NULL || length == 0)
-  {
-    Serial.println("Empty notification received, ignoring");
-    return;
-  }
-
-  // Stop notification received
-  if (pData[0] == 0x03)
-  {
-    // Ack
-    Serial.println("Scheduling to send ack at next loop iteration");
-    sendAckNeeded = true;
-  }
-
-  if (length == 13)
-  {
-    String rawData = BLEUtils::buildHexData(nullptr, pData, length);
-
-    float weight = stoi2(rawData, 22) * 0.01f / 2; // TODO: that probably depends on scale settings? ok for kg
-    float impedance = stoi2(rawData, 18) * 0.01f;
-    int user = stoi(rawData, 6);
-    int units = stoi(rawData, 0);
-    String time = String(String(stoi2(rawData, 4)) + " " + String(stoi(rawData, 8)) + " " + String(stoi(rawData, 10)) + " " + String(stoi(rawData, 12)) + " " + String(stoi(rawData, 14)) + " " + String(stoi(rawData, 16)));
-    String output = String(weight) + " " + impedance + " " + user + " " + units + " " + time;
-    Serial.println(output);
-    return;
-  }
-
-  Serial.println("Received something else");
-}
-
-void sendAck()
-{
-  Serial.println("Sending ack");
-  pBodyCompositionHistoryCharacteristic->writeValue(uint8_t{0x03}, true);
-  uint8_t userIdentifier[] = {0x04, 0xff, 0xff, USER_ID >> 8, USER_ID};
-  size = 5;
-  pBodyCompositionHistoryCharacteristic->writeValue(userIdentifier, size, true);
-}
-
-void blinkThenSleep(bool successStatus)
-{
-  int blinkOn = successStatus ? SUCCESS_BLINK_ON : FAILURE_BLINK_ON;
-  int blinkOff = successStatus ? SUCCESS_BLINK_OFF : FAILURE_BLINK_OFF;
-  uint64_t untilTime = millis() + BLINK_FOR;
-  while (millis() < untilTime)
-  {
-    digitalWrite(ONBOARD_LED, LOW); // that means pull-up low --> LED ON
-    delay(blinkOn);
-    digitalWrite(ONBOARD_LED, HIGH); // that means pull-up high --> LED OFF
-    delay(blinkOff);
-  }
-  esp_deep_sleep_start();
-}
-
-bool connectToScale()
-{
-  BLEClient *pClient = BLEDevice::createClient();
-  pClient->setClientCallbacks(new MyClientCallback());
-  pClient->connect(pDiscoveredDevice);
-
-  // TODO: so much code duplication, there has to be a better way to do this
-
-  // Characteristics under BODY_COMPOSITION_SERVICE
-  pBodyCompositionService = pClient->getService(BODY_COMPOSITION_SERVICE);
-  if (pBodyCompositionService == nullptr)
-  {
-    Serial.print("BODY_COMPOSITION_SERVICE failure");
-    pClient->disconnect();
-    Serial.println("Going to sleep"); // ?
-    blinkThenSleep(FAILURE);          // ?
-  }
-  else
-  {
-    Serial.println("BODY_COMPOSITION_SERVICE ok");
-  }
-
-  pBodyCompositionHistoryCharacteristic = pBodyCompositionService->getCharacteristic(BODY_COMPOSITION_HISTORY_CHARACTERISTIC);
-  if (pBodyCompositionHistoryCharacteristic == nullptr)
-  {
-    Serial.print("BODY_COMPOSITION_HISTORY_CHARACTERISTIC failure");
-    pClient->disconnect();
-    Serial.println("Going to sleep"); // ?
-    blinkThenSleep(FAILURE);          // ?
-  }
-  else
-  {
-    Serial.println("BODY_COMPOSITION_HISTORY_CHARACTERISTIC ok");
-  }
-
-  pCurrentTimeCharacteristic = pBodyCompositionService->getCharacteristic(CURRENT_TIME_CHARACTERISTIC);
-  if (pCurrentTimeCharacteristic == nullptr)
-  {
-    Serial.print("CURRENT_TIME_CHARACTERISTIC failure");
-    pClient->disconnect();
-    Serial.println("Going to sleep"); // ?
-    blinkThenSleep(FAILURE);          // ?
-  }
-  else
-  {
-    Serial.println("CURRENT_TIME_CHARACTERISTIC ok");
-  }
-
-  // Characteristics under HUAMI_CONFIGURATION_SERVICE
-  pHuamiConfigurationService = pClient->getService(HUAMI_CONFIGURATION_SERVICE);
-  if (pHuamiConfigurationService == nullptr)
-  {
-    Serial.print("HUAMI_CONFIGURATION_SERVICE failure");
-    pClient->disconnect();
-    Serial.println("Going to sleep"); // ?
-    blinkThenSleep(FAILURE);          // ?
-  }
-  else
-  {
-    Serial.println("HUAMI_CONFIGURATION_SERVICE ok");
-  }
-
-  pScaleConfigurationCharacteristic = pHuamiConfigurationService->getCharacteristic(SCALE_CONFIGURATION_CHARACTERISTIC);
-  if (pScaleConfigurationCharacteristic == nullptr)
-  {
-    Serial.print("SCALE_CONFIGURATION_CHARACTERISTIC failure");
-    pClient->disconnect();
-    Serial.println("Going to sleep"); // ?
-    blinkThenSleep(FAILURE);          // ?
-  }
-  else
-  {
-    Serial.println("SCALE_CONFIGURATION_CHARACTERISTIC ok");
-  }
-
-  bleConnected = true;
-}
 
 class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks
 {
@@ -288,45 +62,111 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks
   }
 };
 
-bool scanBle()
+void setup()
 {
-  BLEDevice::init("");
-  BLEScan *pBLEScan = BLEDevice::getScan();
-  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
-  pBLEScan->setActiveScan(true);
-  pBLEScan->setInterval(0x50);
-  pBLEScan->setWindow(0x30);
-  pBLEScan->start(MAX_BLE_SCAN_DURATION / 1000);
+  Serial.begin(115200);
+  Serial.println("Starting program");
 
-  Serial.println("");
+  digitalWrite(ONBOARD_LED, HIGH);
+  pinMode(ONBOARD_LED, OUTPUT);
 
-  if (pDiscoveredDevice)
-    return true;
-  else
-    return false;
-}
-
-bool wifiDisconnect()
-{
-  WiFi.disconnect();
-  return false;
-}
-
-bool wifiConnect()
-{
-  float startTime = millis();
-  float untilTime = startTime + MAX_WIFI_ATTEMPT_DURATION;
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD); // DHCP is just fine
-  while (millis() < untilTime)
+  // Get time from the internet and test MQTT at the same time
+  Serial.println("Connecting to WiFi");
+  if (!wifiConnect())
   {
-    if (WiFi.status() == WL_CONNECTED)
-      return true;
-    else
-      delay(100);
+    Serial.println("Cannot connect to WiFi, stopping everything");
+    blinkThenSleep(FAILURE);
+  }
+  else
+    Serial.println("WiFi connected");
+  waitForSync(); // ezTime setup
+  localTime.setLocation(TIMEZONE);
+  Serial.println("Local time: " + localTime.dateTime());
+  mqtt_client.setServer(MQTT_SERVER, MQTT_PORT);
+  if (!mqtt_client.connect(MQTT_CLIENTID, MQTT_USERNAME, MQTT_PASSWORD))
+  {
+    Serial.println("Cannot connect to MQTT, stopping everything");
+    blinkThenSleep(FAILURE);
+  }
+  else
+    Serial.println("MQTT reachable");
+  mqtt_client.disconnect();
+  WiFi.disconnect();
+  Serial.println("WiFi disconnected");
+
+  // Configure BLE callbacks
+  pClient = BLEDevice::createClient();
+  pClient->setClientCallbacks(new MyClientCallback());
+  pBLEScan = BLEDevice::getScan();
+  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+
+  // Look for scale
+  Serial.println("Scanning BLE");
+  if (scanBle())
+    Serial.println("Scale found, now initialising services");
+  else
+  {
+    Serial.println("Cannot find scale, going to sleep");
+    blinkThenSleep(FAILURE);
   }
 
-  if (!WiFi.status() == WL_CONNECTED)
+  // Create BLE client and create service/characteristics objects
+  connectScale();
+
+  // Send configuration to scale. Units and time are re-configured every time,
+  // not sure if that's the best but... why not. That won't prevent daylight
+  // saving time issues though, best would be to use UTC for the scale and
+  // process elsewhere but that's not how Xiaomi works... To retain
+  // compatibility on scales that might concurrently be used with the Mi Fit
+  // app, we stick to local time instead of UTC.
+  configureScale();
+}
+
+void loop()
+{
+  // At this point the scale has already been reconfigured with correct time
+  // and units. User should be weighing themselves, so we start by waiting.
+  delay(TIME_BETWEEN_CONFIG_AND_POLL);
+
+  String scaleReading;
+
+  for (int i = 0; i < POLL_ATTEMPTS; i++)
   {
-    return false;
+    // Reconnect scale. It seems silly to have to re-scan BLE but unless I do
+    // that, I never get a new weigh-in value. Disconnecting/reconnecting client
+    // isn't enough.
+    reconnectScale();
+
+    String currentReading = processScaleData(readScaleData());
+    Serial.print("Reading: ");
+    Serial.println(currentReading.c_str());
+    if (currentReading == scaleReading) // no fresher data from scale
+      break;
+    else
+    {
+      scaleReading = currentReading;
+      if (i == POLL_ATTEMPTS - 1)
+        break;
+      else
+        delay(TIME_BETWEEN_POLLS);
+    }
+  }
+
+  // Ready to transmit data. WiFi and MQTT should succeed, they have already
+  // been tested in setup.
+  Serial.println("Connecting to WiFi and MQTT");
+  wifiConnect();
+  mqtt_client.connect(MQTT_CLIENTID, MQTT_USERNAME, MQTT_PASSWORD);
+  Serial.print("Publishing data to ");
+  Serial.println(MQTT_TOPIC.c_str());
+  if (mqtt_client.publish(MQTT_TOPIC.c_str(), scaleReading.c_str(), false))
+  {
+    Serial.println("Success");
+    blinkThenSleep(SUCCESS);
+  }
+  else
+  {
+    Serial.println("Failure");
+    blinkThenSleep(FAILURE);
   }
 }

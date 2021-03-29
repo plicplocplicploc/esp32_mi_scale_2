@@ -1,0 +1,27 @@
+// Scale discovery method: "mac" for MAC address, anything else for first
+// found scale with relevant given BLE UUIDs
+#define DISCOVERY_METHOD "mac"
+
+// Scale Mac Address. Letters should be in lower case.
+#define SCALE_MAC_ADDRESS "aa:bb:cc:dd:ee:ff"
+
+// Scale unit: 0 for metric, 1 for imperial, 2 for catty
+#define SCALE_UNIT 0
+
+// For ESP32 development board LED feedback. On mine the LED is on GPIO 22
+#define ONBOARD_LED 22
+
+// Timezone (https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)
+#define TIMEZONE "Europe/Paris"
+
+// network details
+const char *WIFI_SSID = "your wifi ssdi";
+const char *WIFI_PASSWORD = "your wifi password";
+
+// MQTT Details
+const char *MQTT_SERVER = "192.168.15.82";
+const int MQTT_PORT = 8884;
+String MQTT_TOPIC = "scale";
+const char *MQTT_USERNAME = "your mqtt username";
+const char *MQTT_PASSWORD = "your mqtt password";
+const char *MQTT_CLIENTID = "scaleEsp";

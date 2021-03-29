@@ -1,69 +1,30 @@
-# Xiaomi Mi Scale V2 ESP32 to Home Assistant Bridge
+# Xiaomi Mi Scale V2 ESP32 Bridge
 
-## Massive ESP32 code rewrite
-* Now does time/unit setting when connecting to scale.
-* Old code closer to forked repo is `esp_sketch.ino.old`.
-* Now uses notifications, but that doesn't change the fact that newest measures don't seem to be communicated to scale unless we restart the whole thing :/
+## Credits
+* Initially forked from [this project](https://github.com/rando-calrissian/esp32_xiaomi_mi_2_hass).
+* Some of the code was translated from [openScale](https://github.com/oliexdev/openScale).
+* This [summary](https://github.com/wiecosystem/Bluetooth/blob/master/doc/devices/huami.health.scale2.md#advertisement) was useful too.
 
+## What's new, in a nutshell
+* Massive code re-write from forked repo, better organised.
+* Now support for scale config.
+* Listener that uploads data to Garmin Connect.
 
-Xiaomi Mi Body Composition Scale integration into Home Assistant using an ESP32 as a BLE to Wifi bridge with Appdaemon processing the data.
-The Appdaemon app will create all sensors automatically and send notifications to each user of their stats as well as the delta from their previous reading (any weight/muscle/etc. gained/lost).
+## Known problems and to-do
+* NTP sometimes times out... add a watchdog.
+* Occasional crash?
+* Add a user weight range in user config and ignore values outside of that range (python side).
+* Units: kg and lbs are okay, setting catty shows a different value on screen (not really what it should be?) and still reports kg via BLE.
+* I haven't touched the `appdaemon` side of things (related to Home Assistant). The `garmin_upload` and `appdaemon` should be merged where possible.
+* Adjust config to prevent incomplete measurements!
 
-## What this fork does:
+## How to
+* Power on the ESP32 and weigh yourself.
+* If you know you are changing units or date/time (e.g. switch to DST), briefly touch the scale shortly before turning on the ESP32. Weigh yourself after the initial waiting time (10s), otherwise values will be reported in mixture of old and new settings
+
+## Improvements over the forked repo
 * Integrate 2 issues reported by other users: [this](https://github.com/rando-calrissian/esp32_xiaomi_mi_2_hass/issues/3) and [that](https://github.com/rando-calrissian/esp32_xiaomi_mi_2_hass/pull/2/commits/02b5ce7a416f39f3d03ec222934be112e28b3e7d).
-* Slight change in the way detected devices are computed. The newer BLE lib breaks compatibility with the way the original sketch worked, see [this](https://github.com/espressif/arduino-esp32/issues/4627#issuecomment-751400018). Slight change in the `MyAdvertisedDeviceCallbacks` class and in `ScanBLE`.
-* Turn on the ESP32 onboard LED for a bit after MQTT update.
-* Uses new lib (whatever it changes): https://github.com/rando-calrissian/esp32_xiaomi_mi_2_hass/issues/1
-* Move ESP32 sketch's config to a separate file.
-
-## Still to do:
-* Update readme. Instructions for templates, deployment, etc.
-* I've made a quick&dirty python MQTT listener that in turn sends data to Garmin Connect.
-* Adjust the `appdaemon` code with my changes.
-* Add support for Garmin Connect via `appdaemon`.
-
-## Acknowledgements:
-This builds on top of the work of lolouk44 https://github.com/lolouk44/xiaomi_mi_scale and directly uses the python functions of that tool to perform its measurements.
-
-## Requirements:
-1. Xiaomi Mi Scale V2 (V1 may also work, it has not been tested).
-2. ESP32
-3. MQTT Broker
-4. Home Assistant using AppDaemon.
-
-## Setup:
-You'll need to know the mac adress of your scale.  If you have a linux machine with bluetooth, the following command will scan for you:
-```
-$ sudo hcitool lescan
-```
-Look for an entry with MIBCS.  Be sure to use the scale while scanning so it will be awake.
-
-You can use the ESP32 program to determine the mac address as well, as by default it will list the devices and mac addresses it finds over serial.
-
-Add the mac address, wifi credentials, mqtt credentials, and desired IP to the arduino program.  It may require more space the the default setup, if you have build errors, add this to your platformio.ini:
-```
-board_build.partitions = min_spiffs.csv
-```
-Once built and uploaded to your ESP32, it will scan all the time waiting for new data over BLE, and when it finds it, it will switch onto wifi, upload the data, then switch back to scanning again after a few minutes.
-
-Next open the xiaomi_scale.py appdaemon app.
-For each user of the scale, fill out this block:
-```
-    {
-        "name": "User1",
-        "height": 185,
-        "age": "1901-01-01",
-        "sex": "male",
-        "weight_max" : 300,
-        "weight_min" : 135,
-        "notification_target" : "pushbullet_target_for_user1"
-    }
-```
-The weight range will be used to determine between multiple users, so if they overlap, you'll need a different solution.
-Height is in CM and age is birth date in Year-Month-Day format.
-The notification target is set up for pushbullet, but you can recofigure it relatively easily.
-As long as you have discovery enabled for MQTT topics, nothing needs to be added to Home Assistant except any UI you want, as Appdaemon will create all the sensors automatically.
-
-You will find a sensor.bodymetrics_[username] with the overall stats along with individual sensors for each metric for easier graphing.
-
-Note:. Due to the nature of the scan, it can take thirty or so seconds before it notifies the user.  It will also sleep for 5 minutes after a reading to avoid keeping the scale awake.  I'm not sure this is actually a thing, but it's mentioned elsewhere and I didn't test it.
+* Slight change in the way detected devices are computed. The newer BLE lib breaks compatibility with the way the original sketch worked, see [this](https://github.com/espressif/arduino-esp32/issues/4627#issuecomment-751400018).
+* ESP32 onboard LED blinking to notify status.
+* Uses new lib as suggested by [that comment](https://github.com/rando-calrissian/esp32_xiaomi_mi_2_hass/issues/1).
+* Better organisation and split user config file, general settings, and code.

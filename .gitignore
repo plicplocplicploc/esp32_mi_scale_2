@@ -5,10 +5,10 @@
 output
 
 # Let's not share all my personal stuff with the whole world
-creds_settings.h
+usersettings.h
 config.yml
 *.log
 
-# Python-specific
+# Python stuff
 __pycache__
 venv
