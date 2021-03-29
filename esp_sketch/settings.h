@@ -1,10 +1,5 @@
 // The program should work fine without modifying these
 
-// User ID value, can be any integer up to 65535 with virtually no consequence
-// unless plenty of clients are polling the scale at the same time. Just sort
-// of random here, leaving as is is fine
-#define USER_ID 32109
-
 // Event durations (milliseconds)
 #define MAX_BLE_SCAN_DURATION 10000
 #define MAX_WIFI_ATTEMPT_DURATION 10000
