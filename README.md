@@ -1,3 +1,8 @@
+# Massive ESP32 code rewrite
+* Now does time/unit setting when connecting to scale.
+* Old code closer to forked repo is `esp_sketch.ino.old`.
+* Now uses notifications, but that doesn't change the fact that newest measures don't seem to be communicated to scale unless we restart the whole thing :/
+
 # Xiaomi Mi Scale V2 ESP32 to Home Assistant Bridge
 Xiaomi Mi Body Composition Scale integration into Home Assistant using an ESP32 as a BLE to Wifi bridge with Appdaemon processing the data.
 The Appdaemon app will create all sensors automatically and send notifications to each user of their stats as well as the delta from their previous reading (any weight/muscle/etc. gained/lost).

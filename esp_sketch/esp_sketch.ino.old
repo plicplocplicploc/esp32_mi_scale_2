@@ -175,7 +175,8 @@ String processScaleData()
     else if (i == MAX_WEIGHT_READINGS_STALE - 1)
     {
       Serial.println("No fresh data, blinking then deepsleeping");
-      blinkThenSleep(false);
+      // blinkThenSleep(false);
+      continue;
     }
     else
     {

@@ -8,15 +8,19 @@
 
 // Globals
 BLEAdvertisedDevice *pDiscoveredDevice = NULL;
+BLERemoteService *pBodyCompositionService = NULL;
+BLERemoteService *pHuamiConfigurationService = NULL;
 BLERemoteCharacteristic *pBodyCompositionHistoryCharacteristic = NULL;
 BLERemoteCharacteristic *pCurrentTimeCharacteristic = NULL;
 BLERemoteCharacteristic *pScaleConfigurationCharacteristic = NULL;
 bool bleConnected = false;
+bool sendAckNeeded = false;
 Timezone localTime;
+size_t size;
 
 // Convenience
-#define FAILURE false
 #define SUCCESS true
+#define FAILURE false
 
 void setup()
 {
@@ -28,6 +32,7 @@ void setup()
   // TODO: what if no WiFi?
 
   // Set up time
+  Serial.println("Connecting to WiFi");
   wifiConnect();
   Serial.println("WiFi connected");
   waitForSync(); // ezTime setup
@@ -35,6 +40,24 @@ void setup()
   Serial.println("Local time: " + localTime.dateTime());
   wifiDisconnect();
   Serial.println("WiFi disconnected");
+
+  // Look for scale and enable notifications
+  Serial.println("Scanning BLE");
+  if (scanBle())
+    Serial.println("Scale found, now initialising services");
+  else
+  {
+    Serial.println("Cannot find scale, going to sleep");
+    blinkThenSleep(FAILURE);
+  }
+  connectToScale();
+  configureScale();
+}
+
+void loop()
+{
+  askForMeasurement();
+  delay(3000);
 }
 
 class MyClientCallback : public BLEClientCallbacks
@@ -47,36 +70,17 @@ class MyClientCallback : public BLEClientCallbacks
   {
     Serial.println("MyClientCallback: BLE client disconnected");
     bleConnected = false;
+    pDiscoveredDevice = NULL;
   }
 };
-
-void loop()
-{
-  if (!bleConnected)
-  {
-    // Look for scale and enable notifications
-    Serial.println("Scanning BLE");
-    if (scanBle())
-      Serial.println("Scale found, now initialising services");
-    else
-    {
-      Serial.println("Cannot find scale, going to sleep");
-      blinkThenSleep(FAILURE);
-    }
-    connectToScale();
-    configureScale();
-  }
-
-  askForMeasurement();
-  delay(3000);
-}
 
 void configureScale()
 {
   // Set scale units
-  Serial.println("Setting scale units");                      // not entirely sure whether this actually works
-  uint8_t setUnitCmd[] = {0x06, 0x04, 0x00, SCALE_UNIT};      //
-  pScaleConfigurationCharacteristic->writeValue(*setUnitCmd); //
+  Serial.println("Setting scale units");
+  uint8_t setUnitCmd[] = {0x06, 0x04, 0x00, SCALE_UNIT};
+  size = 4;
+  pScaleConfigurationCharacteristic->writeValue(setUnitCmd, size, true);
 
   // Set time
   Serial.println("Setting scale time");
@@ -86,30 +90,29 @@ void configureScale()
   uint8_t hour = localTime.hour();
   uint8_t minute = localTime.minute();
   uint8_t second = localTime.second();
+  uint8_t yearLeft = (uint8_t)(year >> 8);
+  uint8_t yearRight = (uint8_t)year;
 
-  uint8_t yearLeft = (uint8_t)(year >> 8);                                                            //
-  uint8_t yearRight = (uint8_t)year;                                                                  //
-  uint8_t dateTimeByte[] = {yearRight, yearLeft, month, day, hour, minute, second, 0x03, 0x00, 0x00}; //
-                                                                                                      // sometimes works
-  pCurrentTimeCharacteristic->writeValue(*dateTimeByte);                                              // and sometimes not?
+  uint8_t dateTimeByte[] = {yearRight, yearLeft, month, day, hour, minute, second, 0x03, 0x00, 0x00};
+  size = 10;
+  pCurrentTimeCharacteristic->writeValue(dateTimeByte, size, true);
 
-  // Request notifications. BLE notifications still need an extra step to be
-  // triggered
+  // Enable notifications. Still need an extra step to actually receive them.
   Serial.println("Register for notifications");
   pBodyCompositionHistoryCharacteristic->registerForNotify(notifyCallback);
 
   // Configure scale to get only last measurement
   Serial.println("Asking for last measurement only");
-  uint8_t userIdentifier[] = {0x01, 0xff, 0xff, USER_ID >> 8, USER_ID};
-  pBodyCompositionHistoryCharacteristic->writeValue(*userIdentifier);
+  uint8_t userIdentifier[5] = {0x01, 0xff, 0xff, USER_ID >> 8, USER_ID};
+  size = 5;
+  pBodyCompositionHistoryCharacteristic->writeValue(userIdentifier, size, true);
 }
 
 void askForMeasurement()
 {
-  // Trigger reception of notifications
+  // Ask for measurements
   Serial.println("Requesting measurement");
-  pBodyCompositionHistoryCharacteristic->writeValue(uint8_t{0x02});
-  Serial.println("After requesting measurement");
+  pBodyCompositionHistoryCharacteristic->writeValue(uint8_t{0x02}, true);
 }
 
 int16_t stoi(String input, uint16_t index1)
@@ -139,11 +142,8 @@ void notifyCallback(
   if (pData[0] == 0x03)
   {
     // Ack
-    Serial.println("Ack");
-    pBodyCompositionHistoryCharacteristic->writeValue(uint8_t{0x03});
-    uint8_t userIdentifier[] = {0x04, 0xff, 0xff, USER_ID >> 8, USER_ID};
-    pBodyCompositionHistoryCharacteristic->writeValue(*userIdentifier);
-    return;
+    Serial.println("Scheduling to send ack at next loop iteration");
+    sendAckNeeded = true;
   }
 
   if (length == 13)
@@ -161,6 +161,15 @@ void notifyCallback(
   }
 
   Serial.println("Received something else");
+}
+
+void sendAck()
+{
+  Serial.println("Sending ack");
+  pBodyCompositionHistoryCharacteristic->writeValue(uint8_t{0x03}, true);
+  uint8_t userIdentifier[] = {0x04, 0xff, 0xff, USER_ID >> 8, USER_ID};
+  size = 5;
+  pBodyCompositionHistoryCharacteristic->writeValue(userIdentifier, size, true);
 }
 
 void blinkThenSleep(bool successStatus)
@@ -187,7 +196,7 @@ bool connectToScale()
   // TODO: so much code duplication, there has to be a better way to do this
 
   // Characteristics under BODY_COMPOSITION_SERVICE
-  BLERemoteService *pBodyCompositionService = pClient->getService(BODY_COMPOSITION_SERVICE);
+  pBodyCompositionService = pClient->getService(BODY_COMPOSITION_SERVICE);
   if (pBodyCompositionService == nullptr)
   {
     Serial.print("BODY_COMPOSITION_SERVICE failure");
@@ -227,8 +236,8 @@ bool connectToScale()
   }
 
   // Characteristics under HUAMI_CONFIGURATION_SERVICE
-  BLERemoteService *huamiConfigurationService = pClient->getService(HUAMI_CONFIGURATION_SERVICE);
-  if (huamiConfigurationService == nullptr)
+  pHuamiConfigurationService = pClient->getService(HUAMI_CONFIGURATION_SERVICE);
+  if (pHuamiConfigurationService == nullptr)
   {
     Serial.print("HUAMI_CONFIGURATION_SERVICE failure");
     pClient->disconnect();
@@ -240,7 +249,7 @@ bool connectToScale()
     Serial.println("HUAMI_CONFIGURATION_SERVICE ok");
   }
 
-  pScaleConfigurationCharacteristic = huamiConfigurationService->getCharacteristic(SCALE_CONFIGURATION_CHARACTERISTIC);
+  pScaleConfigurationCharacteristic = pHuamiConfigurationService->getCharacteristic(SCALE_CONFIGURATION_CHARACTERISTIC);
   if (pScaleConfigurationCharacteristic == nullptr)
   {
     Serial.print("SCALE_CONFIGURATION_CHARACTERISTIC failure");
@@ -268,7 +277,7 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks
     }
     else
     {
-      if (!advertisedDevice.haveServiceUUID() || !advertisedDevice.isAdvertisingService(BODY_COMPOSITION_SERVICE))
+      if (!advertisedDevice.haveServiceUUID() && !advertisedDevice.isAdvertisingService(BODY_COMPOSITION_SERVICE))
         return;
     }
 
