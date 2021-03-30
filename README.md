@@ -14,7 +14,6 @@
 * NTP sometimes times out... add a watchdog.
 * Occasional crash?
 * Add a user weight range in user config and ignore values outside of that range (python side).
-* Catty: possibly need a conversion, reported value seems off.
 * I haven't touched the `appdaemon` side of things (related to Home Assistant). The `garmin_upload` and `appdaemon` should be merged where possible.
 
 ## How to

@@ -443,7 +443,7 @@ void loop()
   Serial.println("Connecting to WiFi and MQTT");
   wifiConnect();
   mqtt_client.connect(MQTT_CLIENTID, MQTT_USERNAME, MQTT_PASSWORD);
-  Serial.print("Publishing data to ");
+  Serial.print("Publishing data to MQTT queue: ");
   Serial.println(MQTT_DATA_TOPIC);
   if (mqtt_client.publish(MQTT_DATA_TOPIC, scaleReading.c_str(), true))
   {
