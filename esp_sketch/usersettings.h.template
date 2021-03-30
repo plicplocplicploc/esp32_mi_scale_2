@@ -15,13 +15,14 @@
 #define TIMEZONE "Europe/Paris"
 
 // network details
-const char *WIFI_SSID = "your wifi ssdi";
-const char *WIFI_PASSWORD = "your wifi password";
+#define WIFI_SSID "ssid"
+#define WIFI_PASSWORD "password"
 
 // MQTT Details
-const char *MQTT_SERVER = "192.168.15.82";
-const int MQTT_PORT = 8884;
-String MQTT_TOPIC = "scale";
-const char *MQTT_USERNAME = "your mqtt username";
-const char *MQTT_PASSWORD = "your mqtt password";
-const char *MQTT_CLIENTID = "scaleEsp";
+#define MQTT_SERVER "192.168.15.82"
+#define MQTT_PORT 8884
+#define MQTT_SETTINGS_TOPIC "scaleSettings"
+#define MQTT_DATA_TOPIC "scale"
+#define MQTT_USERNAME "mqtt username"
+#define MQTT_PASSWORD "mqtt password"
+#define MQTT_CLIENTID "scaleEsp"

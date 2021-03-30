@@ -3,7 +3,7 @@
 ## Credits
 * Initially forked from [this project](https://github.com/rando-calrissian/esp32_xiaomi_mi_2_hass).
 * Some of the code was translated from [openScale](https://github.com/oliexdev/openScale).
-* This [summary](https://github.com/wiecosystem/Bluetooth/blob/master/doc/devices/huami.health.scale2.md#advertisement) was useful too.
+* This [summary](https://github.com/wiecosystem/Bluetooth/blob/master/doc/devices/huami.health.scale2.md#advertisement) and [that other one](https://github.com/wiecosystem/Bluetooth/blob/master/doc/devices/huami.health.scale2.md#advertisement) were useful too.
 
 ## What's new, in a nutshell
 * Massive code re-write from forked repo, better organised.
@@ -11,17 +11,19 @@
 * Listener that uploads data to Garmin Connect.
 
 ## Known problems and to-do
-* Adjust config to prevent incomplete measurements.
-* Right now the config (units and time) is re-written every time. Instead retrieve instructions from an MQTT queue at start-up.
 * NTP sometimes times out... add a watchdog.
 * Occasional crash?
 * Add a user weight range in user config and ignore values outside of that range (python side).
-* Units: kg and lbs are okay, setting catty shows a different value on screen (not really what it should be?) and still reports kg via BLE.
+* Catty: possibly need a conversion, reported value seems off.
 * I haven't touched the `appdaemon` side of things (related to Home Assistant). The `garmin_upload` and `appdaemon` should be merged where possible.
 
 ## How to
-* Power on the ESP32 and weigh yourself.
-* If you know you are changing units or date/time (e.g. switch to DST), briefly touch the scale shortly before turning on the ESP32. Weigh yourself after the initial waiting time (10s), otherwise values will be reported in mixture of old and new settings
+* Have a look at `usersettings.h`; some things can also be tweaked in `settings.h` but that shouldn't be necessary.
+* Power on the ESP32 and weigh yourself should just work. Just make sure you end up with a stabilised weigh-in (blinking value on scale).
+* If the scale needs to be reconfigured (units and time), send a single `1` digit to the `MQTT_SETTINGS_TOPIC` MQTT topic. Make sure it is sent as a retained message for the ESP to catch it. Step on the scale, power on the ESP, and the scale will be reconfigured. No reading will be acquired this time. Make sure the scale returns to zero before new weigh-ins.
+```
+mosquitto_pub -h <host> -p 8884 -t 'scaleSettings' -u <mqtt user> -P '<mqtt password>' -m '1' -r
+```
 
 ## Improvements over the forked repo
 * Integrate 2 issues reported by other users: [this](https://github.com/rando-calrissian/esp32_xiaomi_mi_2_hass/issues/3) and [that](https://github.com/rando-calrissian/esp32_xiaomi_mi_2_hass/pull/2/commits/02b5ce7a416f39f3d03ec222934be112e28b3e7d).

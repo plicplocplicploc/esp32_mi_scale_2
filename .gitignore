@@ -12,3 +12,6 @@ config.yml
 # Python stuff
 __pycache__
 venv
+
+# other
+tmp

@@ -21,12 +21,12 @@ Timezone localTime;
 size_t size;
 WiFiClient espClient;
 PubSubClient mqtt_client(espClient);
+bool reconfigRequested = false;
 
 // Convenience
 #define SUCCESS true
 #define FAILURE false
 
-// These callbacks need to be defined here
 class MyClientCallback : public BLEClientCallbacks
 {
   void onConnect(BLEClient *pclient)
@@ -62,6 +62,287 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks
   }
 };
 
+void mqttCallback(const char *topic, byte *payload, unsigned int length)
+{
+  if (strcmp(topic, MQTT_SETTINGS_TOPIC) != 0 || length == 0)
+    return;
+
+  char message[length + 1];
+  for (int i = 0; i < length; i++)
+    message[i] = (char)payload[i];
+  message[length] = '\0';
+
+  if (strcmp(message, CONFIG_TRIGGER_STR) == 0)
+    reconfigRequested = true;
+}
+
+void reconnectScale()
+{
+  pClient->disconnect();
+  while (pClient->isConnected())
+    delay(DEFAULT_DELAY);
+  delete (pDiscoveredDevice);
+  scanBle();
+  connectScale();
+}
+
+bool connectScale()
+{
+  pClient->connect(pDiscoveredDevice);
+
+  // Characteristics under BODY_COMPOSITION_SERVICE
+  pBodyCompositionService = pClient->getService(BODY_COMPOSITION_SERVICE);
+  if (pBodyCompositionService == nullptr)
+  {
+    Serial.print("BODY_COMPOSITION_SERVICE failure, stopping everything");
+    pClient->disconnect();
+    blinkThenSleep(FAILURE);
+  }
+
+  pBodyCompositionHistoryCharacteristic = pBodyCompositionService->getCharacteristic(BODY_COMPOSITION_HISTORY_CHARACTERISTIC);
+  if (pBodyCompositionHistoryCharacteristic == nullptr)
+  {
+    Serial.print("BODY_COMPOSITION_HISTORY_CHARACTERISTIC failure, stopping everything");
+    pClient->disconnect();
+    blinkThenSleep(FAILURE);
+  }
+
+  // All those are only required if we need to reconfigure the scale
+  if (reconfigRequested)
+  {
+    pCurrentTimeCharacteristic = pBodyCompositionService->getCharacteristic(CURRENT_TIME_CHARACTERISTIC);
+    if (pCurrentTimeCharacteristic == nullptr)
+    {
+      Serial.print("CURRENT_TIME_CHARACTERISTIC failure, stopping everything");
+      pClient->disconnect();
+      blinkThenSleep(FAILURE);
+    }
+  }
+
+  if (reconfigRequested)
+  {
+    // Characteristics under HUAMI_CONFIGURATION_SERVICE
+    pHuamiConfigurationService = pClient->getService(HUAMI_CONFIGURATION_SERVICE);
+    if (pHuamiConfigurationService == nullptr)
+    {
+      Serial.print("HUAMI_CONFIGURATION_SERVICE failure, stopping everything");
+      pClient->disconnect();
+      blinkThenSleep(FAILURE);
+    }
+
+    pScaleConfigurationCharacteristic = pHuamiConfigurationService->getCharacteristic(SCALE_CONFIGURATION_CHARACTERISTIC);
+    if (pScaleConfigurationCharacteristic == nullptr)
+    {
+      Serial.print("SCALE_CONFIGURATION_CHARACTERISTIC failure, stopping everything");
+      pClient->disconnect();
+      blinkThenSleep(FAILURE);
+    }
+  }
+}
+
+bool scanBle()
+{
+  BLEDevice::init("");
+  pBLEScan->setActiveScan(true);
+  pBLEScan->setInterval(0x50);
+  pBLEScan->setWindow(0x30);
+  pBLEScan->start(MAX_BLE_SCAN_DURATION / 1000);
+
+  Serial.println("");
+  if (pDiscoveredDevice)
+    return true;
+  else
+    return false;
+}
+
+int16_t stoi(String input, uint16_t index1)
+{
+  return (int16_t)(strtol(input.substring(index1, index1 + 2).c_str(), NULL, 16));
+}
+
+int16_t stoi2(String input, uint16_t index1)
+{
+  return (int16_t)(strtol((input.substring(index1 + 2, index1 + 4) + input.substring(index1, index1 + 2)).c_str(), NULL, 16));
+}
+
+void blinkThenSleep(bool successStatus)
+{
+  int blinkOn = successStatus ? SUCCESS_BLINK_ON : FAILURE_BLINK_ON;
+  int blinkOff = successStatus ? SUCCESS_BLINK_OFF : FAILURE_BLINK_OFF;
+  uint64_t untilTime = millis() + BLINK_FOR;
+  while (millis() < untilTime)
+  {
+    digitalWrite(ONBOARD_LED, LOW); // that means pull-up low --> LED ON
+    delay(blinkOn);
+    digitalWrite(ONBOARD_LED, HIGH); // that means pull-up high --> LED OFF
+    delay(blinkOff);
+  }
+  esp_deep_sleep_start();
+}
+
+bool wifiConnect()
+{
+  for (int i = 0; i < MAX_WIFI_CONNECT_ATTEMPTS; i++)
+  {
+    Serial.print("Attempt ");
+    Serial.println(i + 1);
+    uint64_t startTime = millis();
+    uint64_t untilTime = startTime + MAX_WIFI_ATTEMPT_DURATION;
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD); // DHCP is just fine
+    while (millis() < untilTime)
+    {
+      if (WiFi.status() == WL_CONNECTED)
+        return true;
+      else
+        delay(DEFAULT_DELAY);
+    }
+  }
+
+  if (!WiFi.status() == WL_CONNECTED)
+  {
+    return false;
+  }
+}
+
+bool weightStabilised(String rawDataFromScale)
+{
+  // Control bytes are 0 1 2 3, hence the `substring(0, 4)`
+  uint16_t controlBytes = strtol(rawDataFromScale.substring(0, 4).c_str(), NULL, 16);
+  if ((controlBytes & 0b100000) == 0) // 11th bit out of 16
+    return false;
+  else
+    return true;
+}
+
+String processScaleData(String rawDataFromScale)
+{
+  float weight = stoi2(rawDataFromScale, 22) * 0.01f; // there's a trick
+  float impedance = stoi2(rawDataFromScale, 18) * 0.01f;
+
+  // Finding out what unit is used, the info comes from the control bytes.
+  // Control bytes are 0 1 2 3, hence the `substring(0, 4)`
+  uint16_t controlBytes = strtol(rawDataFromScale.substring(0, 4).c_str(), NULL, 16);
+  String strUnits;
+  // 8th and 10th off: metric
+  // 8th on: catty
+  // 10th on: imperial
+  if ((controlBytes & 0b100000000) == 0 && (controlBytes & 0b1000000) == 0)
+  {
+    strUnits = "kg";
+    weight /= 2;
+  }
+  else if ((controlBytes & 0b100000000) == 0)
+    strUnits = "jin";
+  else if ((controlBytes & 0b1000000) == 0)
+    strUnits = "lbs";
+
+  // Prepare return string
+  String time = String(String(stoi2(rawDataFromScale, 4)) + " " + String(stoi(rawDataFromScale, 8)) + " " + String(stoi(rawDataFromScale, 10)) + " " + String(stoi(rawDataFromScale, 12)) + " " + String(stoi(rawDataFromScale, 14)) + " " + String(stoi(rawDataFromScale, 16)));
+  String parsedData =
+      String("{\"Weight\":\"") +
+      String(weight) +
+      String("\", \"Impedance\":\"") +
+      String(impedance) +
+      String("\", \"Units\":\"") +
+      String(strUnits) +
+      String("\", \"Timestamp\":\"") +
+      time +
+      String("\"}");
+
+  return parsedData;
+}
+
+void configureScale()
+{
+  Serial.println("Configuring scale");
+
+  // Set scale units
+  Serial.println("Setting scale units");
+  uint8_t setUnitCmd[] = {0x06, 0x04, 0x00, SCALE_UNIT};
+  size = 4;
+  pScaleConfigurationCharacteristic->writeValue(setUnitCmd, size, true);
+
+  // Set time
+  Serial.println("Setting scale time");
+  uint16_t year = localTime.year();
+  uint8_t month = localTime.month();
+  uint8_t day = localTime.day();
+  uint8_t hour = localTime.hour();
+  uint8_t minute = localTime.minute();
+  uint8_t second = localTime.second();
+  uint8_t yearLeft = (uint8_t)(year >> 8);
+  uint8_t yearRight = (uint8_t)year;
+
+  uint8_t dateTimeByte[] = {yearRight, yearLeft, month, day, hour, minute, second, 0x03, 0x00, 0x00};
+  size = 10;
+  pCurrentTimeCharacteristic->writeValue(dateTimeByte, size, true);
+}
+
+void askForMeasurement()
+{
+  // Ask for measurements
+  Serial.println("Requesting measurement");
+  pBodyCompositionHistoryCharacteristic->writeValue(uint8_t{0x02}, true);
+}
+
+String readScaleData()
+{
+  // It's unclear to me in which circumstances the scale will remember/report
+  // only the latest weigh-in, or a handful of them. In doubt, let's only work
+  // with the latest entry.
+  int lastEntry = pDiscoveredDevice->getServiceDataCount() - 1;
+  std::string md = pDiscoveredDevice->getServiceData(lastEntry);
+  uint8_t *mdp = (uint8_t *)pDiscoveredDevice->getServiceData(lastEntry).data();
+
+  return BLEUtils::buildHexData(nullptr, mdp, md.length());
+}
+
+void checkReconfigRequested()
+{
+  // Connect to MQTT
+  mqtt_client.setServer(MQTT_SERVER, MQTT_PORT);
+  if (!mqtt_client.connect(MQTT_CLIENTID, MQTT_USERNAME, MQTT_PASSWORD))
+  {
+    Serial.println("Cannot connect to MQTT, stopping everything");
+    blinkThenSleep(FAILURE);
+  }
+  else
+    Serial.println("MQTT connected");
+
+  // Subscribe to topic
+  if (!mqtt_client.subscribe(MQTT_SETTINGS_TOPIC))
+  {
+    Serial.println("Cannot subscribe to MQTT topic, stopping everything");
+    blinkThenSleep(FAILURE);
+  }
+  else
+    Serial.println("MQTT settings topic subscribed");
+
+  // Poll topic for a maximum of MQTT_POLL_TIME
+  uint64_t startTime = millis();
+  uint64_t untilTime = startTime + MQTT_POLL_TIME;
+  mqtt_client.setCallback(mqttCallback);
+  while (millis() < untilTime)
+  {
+    mqtt_client.loop();
+    if (reconfigRequested)
+    {
+      // Clear queue
+      mqtt_client.publish(MQTT_SETTINGS_TOPIC, NULL, true);
+      break;
+    }
+    delay(DEFAULT_DELAY);
+  }
+
+  if (reconfigRequested)
+    Serial.println("Reconfig requested");
+  else
+    Serial.println("Reconfig not requested");
+
+  mqtt_client.disconnect();
+  Serial.println("MQTT disconnected");
+}
+
 void setup()
 {
   Serial.begin(115200);
@@ -70,7 +351,6 @@ void setup()
   digitalWrite(ONBOARD_LED, HIGH);
   pinMode(ONBOARD_LED, OUTPUT);
 
-  // Get time from the internet and test MQTT at the same time
   Serial.println("Connecting to WiFi");
   if (!wifiConnect())
   {
@@ -79,18 +359,17 @@ void setup()
   }
   else
     Serial.println("WiFi connected");
-  waitForSync(); // ezTime setup
-  localTime.setLocation(TIMEZONE);
-  Serial.println("Local time: " + localTime.dateTime());
-  mqtt_client.setServer(MQTT_SERVER, MQTT_PORT);
-  if (!mqtt_client.connect(MQTT_CLIENTID, MQTT_USERNAME, MQTT_PASSWORD))
+
+  checkReconfigRequested();
+  if (reconfigRequested)
   {
-    Serial.println("Cannot connect to MQTT, stopping everything");
-    blinkThenSleep(FAILURE);
+    Serial.println("Reconfig requested");
+    Serial.println("Getting time from NTP");
+    waitForSync(); // ezTime setup
+    localTime.setLocation(TIMEZONE);
+    Serial.println("Local time: " + localTime.dateTime());
   }
-  else
-    Serial.println("MQTT reachable");
-  mqtt_client.disconnect();
+
   WiFi.disconnect();
   Serial.println("WiFi disconnected");
 
@@ -113,42 +392,49 @@ void setup()
   // Create BLE client and create service/characteristics objects
   connectScale();
 
-  // Send configuration to scale. Units and time are re-configured every time,
-  // not sure if that's the best but... why not. That won't prevent daylight
-  // saving time issues though, best would be to use UTC for the scale and
-  // process elsewhere but that's not how Xiaomi works... To retain
-  // compatibility on scales that might concurrently be used with the Mi Fit
-  // app, we stick to local time instead of UTC.
-  configureScale();
+  // Configure scale if requested. We keep Xiaomi's way of using local time
+  // instead of UTC for the scale, to not break things for users using Mi Fit
+  // together with this program. And we end the program after the reconfig, as
+  // a weigh-in should not happen in the same "session" as the reconfig,
+  // otherwise values reported by the scale are all mixed up.
+  if (reconfigRequested)
+  {
+    configureScale();
+    Serial.println("Reconfig done, ending program");
+    blinkThenSleep(SUCCESS);
+  }
 }
 
 void loop()
 {
-  // At this point the scale has already been reconfigured with correct time
-  // and units. User should be weighing themselves, so we start by waiting.
-  delay(TIME_BETWEEN_CONFIG_AND_POLL);
-
   String scaleReading;
+  String reading;
 
   for (int i = 0; i < POLL_ATTEMPTS; i++)
   {
-    // Reconnect scale. It seems silly to have to re-scan BLE but unless I do
-    // that, I never get a new weigh-in value. Disconnecting/reconnecting client
-    // isn't enough.
-    reconnectScale();
-
-    String currentReading = processScaleData(readScaleData());
-    Serial.print("Reading: ");
-    Serial.println(currentReading.c_str());
-    if (currentReading == scaleReading) // no fresher data from scale
-      break;
+    reading = readScaleData();
+    if (!weightStabilised(reading))
+    {
+      Serial.println("Weight not stabilised in last measure");
+      delay(TIME_BETWEEN_POLLS);
+      // Reconnect scale. It seems silly to have to re-scan BLE but unless I
+      // do that, I never get a new weigh-in value. Disconnecting/reconnecting
+      // client isn't enough.
+      if (i == POLL_ATTEMPTS - 1)
+      {
+        Serial.println("No stabilised meaasurement in scale, ending program");
+        blinkThenSleep(FAILURE);
+      }
+      else
+        reconnectScale();
+    }
     else
     {
-      scaleReading = currentReading;
-      if (i == POLL_ATTEMPTS - 1)
-        break;
-      else
-        delay(TIME_BETWEEN_POLLS);
+      // We've got a value with a stabilised weight, considering it's valid
+      scaleReading = processScaleData(reading);
+      Serial.print("Reading (weight stable): ");
+      Serial.println(scaleReading.c_str());
+      break;
     }
   }
 
@@ -158,10 +444,10 @@ void loop()
   wifiConnect();
   mqtt_client.connect(MQTT_CLIENTID, MQTT_USERNAME, MQTT_PASSWORD);
   Serial.print("Publishing data to ");
-  Serial.println(MQTT_TOPIC.c_str());
-  if (mqtt_client.publish(MQTT_TOPIC.c_str(), scaleReading.c_str(), false))
+  Serial.println(MQTT_DATA_TOPIC);
+  if (mqtt_client.publish(MQTT_DATA_TOPIC, scaleReading.c_str(), true))
   {
-    Serial.println("Success");
+    Serial.println("Success, ending program");
     blinkThenSleep(SUCCESS);
   }
   else
