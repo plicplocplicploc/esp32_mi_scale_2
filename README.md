@@ -20,7 +20,7 @@
 ## How to
 * Have a look at `usersettings.h`; some things can also be tweaked in `settings.h` but that shouldn't be necessary.
 * Power on the ESP32 and weigh yourself should just work. Just make sure you end up with a stabilised weigh-in (blinking value on scale).
-* If the scale needs to be reconfigured (units and time), send a single `1` digit to the `MQTT_SETTINGS_TOPIC` MQTT topic. Make sure it is sent as a retained message for the ESP to catch it. Step on the scale, power on the ESP, and the scale will be reconfigured. No reading will be acquired this time. Make sure the scale returns to zero before new weigh-ins.
+* If the scale needs to be reconfigured (units and time), send a `CONFIG_TRIGGER_STR` message to the `MQTT_SETTINGS_TOPIC` MQTT topic. Make sure it is sent as a retained message for the ESP to catch it. Step on the scale, power on the ESP, and the scale will be reconfigured. No reading will be acquired this time. Make sure the scale returns to zero before new weigh-ins.
 ```
 mosquitto_pub -h <host> -p 8884 -t 'scaleSettings' -u <mqtt user> -P '<mqtt password>' -m '1' -r
 ```
