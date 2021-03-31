@@ -11,6 +11,7 @@
 * Listener that uploads data to Garmin Connect.
 
 ## Known problems and to-do
+* Store last sent value in EEPROM and avoid re-sending previous value.
 * NTP sometimes times out... add a watchdog.
 * Occasional crash?
 * Add a user weight range in user config and ignore values outside of that range (python side).
