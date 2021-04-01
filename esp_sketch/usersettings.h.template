@@ -19,7 +19,7 @@
 #define WIFI_PASSWORD "password"
 
 // MQTT Details
-#define MQTT_SERVER "192.168.15.82"
+#define MQTT_SERVER "192.168.15.82" // IP address or hostname
 #define MQTT_PORT 8884
 #define MQTT_SETTINGS_TOPIC "scaleSettings"
 #define MQTT_DATA_TOPIC "scale"

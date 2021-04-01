@@ -4,6 +4,8 @@
 #include <BLEAdvertisedDevice.h>
 #include <BLEDevice.h>
 #include <PubSubClient.h>
+#include <ESPmDNS.h>
+#include <EEPROM.h>
 
 #include "usersettings.h"
 #include "settings.h"
@@ -22,6 +24,7 @@ size_t size;
 WiFiClient espClient;
 PubSubClient mqtt_client(espClient);
 bool reconfigRequested = false;
+#define EEPROM_SIZE 27 // size required in EEPROM to store the last valid data
 
 // Convenience
 #define SUCCESS true
@@ -94,7 +97,7 @@ bool connectScale()
   pBodyCompositionService = pClient->getService(BODY_COMPOSITION_SERVICE);
   if (pBodyCompositionService == nullptr)
   {
-    Serial.print("BODY_COMPOSITION_SERVICE failure, stopping everything");
+    Serial.print("BODY_COMPOSITION_SERVICE failure, ending program");
     pClient->disconnect();
     blinkThenSleep(FAILURE);
   }
@@ -102,7 +105,7 @@ bool connectScale()
   pBodyCompositionHistoryCharacteristic = pBodyCompositionService->getCharacteristic(BODY_COMPOSITION_HISTORY_CHARACTERISTIC);
   if (pBodyCompositionHistoryCharacteristic == nullptr)
   {
-    Serial.print("BODY_COMPOSITION_HISTORY_CHARACTERISTIC failure, stopping everything");
+    Serial.print("BODY_COMPOSITION_HISTORY_CHARACTERISTIC failure, ending program");
     pClient->disconnect();
     blinkThenSleep(FAILURE);
   }
@@ -113,7 +116,7 @@ bool connectScale()
     pCurrentTimeCharacteristic = pBodyCompositionService->getCharacteristic(CURRENT_TIME_CHARACTERISTIC);
     if (pCurrentTimeCharacteristic == nullptr)
     {
-      Serial.print("CURRENT_TIME_CHARACTERISTIC failure, stopping everything");
+      Serial.print("CURRENT_TIME_CHARACTERISTIC failure, ending program");
       pClient->disconnect();
       blinkThenSleep(FAILURE);
     }
@@ -125,7 +128,7 @@ bool connectScale()
     pHuamiConfigurationService = pClient->getService(HUAMI_CONFIGURATION_SERVICE);
     if (pHuamiConfigurationService == nullptr)
     {
-      Serial.print("HUAMI_CONFIGURATION_SERVICE failure, stopping everything");
+      Serial.print("HUAMI_CONFIGURATION_SERVICE failure, ending program");
       pClient->disconnect();
       blinkThenSleep(FAILURE);
     }
@@ -133,7 +136,7 @@ bool connectScale()
     pScaleConfigurationCharacteristic = pHuamiConfigurationService->getCharacteristic(SCALE_CONFIGURATION_CHARACTERISTIC);
     if (pScaleConfigurationCharacteristic == nullptr)
     {
-      Serial.print("SCALE_CONFIGURATION_CHARACTERISTIC failure, stopping everything");
+      Serial.print("SCALE_CONFIGURATION_CHARACTERISTIC failure, ending program");
       pClient->disconnect();
       blinkThenSleep(FAILURE);
     }
@@ -278,13 +281,6 @@ void configureScale()
   pCurrentTimeCharacteristic->writeValue(dateTimeByte, size, true);
 }
 
-void askForMeasurement()
-{
-  // Ask for measurements
-  Serial.println("Requesting measurement");
-  pBodyCompositionHistoryCharacteristic->writeValue(uint8_t{0x02}, true);
-}
-
 String readScaleData()
 {
   // It's unclear to me in which circumstances the scale will remember/report
@@ -299,11 +295,36 @@ String readScaleData()
 
 void checkReconfigRequested()
 {
+  // Possibly need to resolve IP address from hostname
+  IPAddress MQTT_IP;
+  if (!MQTT_IP.fromString(MQTT_SERVER))
+  {
+    if (!MDNS.begin("ESP32mDNS"))
+    {
+      Serial.println("Error setting up mDNS responder, ending program");
+      blinkThenSleep(FAILURE);
+    }
+    else
+    {
+      MQTT_IP = MDNS.queryHost(MQTT_SERVER);
+      if (!MQTT_IP)
+      {
+        Serial.println("Cannot resolve MQTT server address, ending program");
+        blinkThenSleep(FAILURE);
+      }
+      else
+      {
+        Serial.print("IP address of MQTT server resolved to: ");
+        Serial.println(MQTT_IP.toString());
+      }
+    }
+  }
+
   // Connect to MQTT
-  mqtt_client.setServer(MQTT_SERVER, MQTT_PORT);
+  mqtt_client.setServer(MQTT_IP, MQTT_PORT);
   if (!mqtt_client.connect(MQTT_CLIENTID, MQTT_USERNAME, MQTT_PASSWORD))
   {
-    Serial.println("Cannot connect to MQTT, stopping everything");
+    Serial.println("Cannot connect to MQTT, ending program");
     blinkThenSleep(FAILURE);
   }
   else
@@ -312,7 +333,7 @@ void checkReconfigRequested()
   // Subscribe to topic
   if (!mqtt_client.subscribe(MQTT_SETTINGS_TOPIC))
   {
-    Serial.println("Cannot subscribe to MQTT topic, stopping everything");
+    Serial.println("Cannot subscribe to MQTT topic, ending program");
     blinkThenSleep(FAILURE);
   }
   else
@@ -351,10 +372,12 @@ void setup()
   digitalWrite(ONBOARD_LED, HIGH);
   pinMode(ONBOARD_LED, OUTPUT);
 
+  EEPROM.begin(EEPROM_SIZE);
+
   Serial.println("Connecting to WiFi");
   if (!wifiConnect())
   {
-    Serial.println("Cannot connect to WiFi, stopping everything");
+    Serial.println("Cannot connect to WiFi, ending program");
     blinkThenSleep(FAILURE);
   }
   else
@@ -436,6 +459,19 @@ void loop()
       Serial.println(scaleReading.c_str());
       break;
     }
+  }
+
+  // Is the data already in EEPROM?
+  String inStorage = EEPROM.readString(0);
+  if (reading == inStorage)
+  {
+    Serial.println("Latest value is identical to the latest processed one, ending program");
+    blinkThenSleep(FAILURE);
+  }
+  else
+  {
+    EEPROM.writeString(0, reading);
+    EEPROM.commit();
   }
 
   // Ready to transmit data. WiFi and MQTT should succeed, they have already

@@ -11,7 +11,6 @@
 * Listener that uploads data to Garmin Connect.
 
 ## Known problems and to-do
-* Store last sent value in EEPROM and avoid re-sending previous value.
 * NTP sometimes times out... add a watchdog.
 * Occasional crash?
 * Add a user weight range in user config and ignore values outside of that range (python side).
@@ -28,6 +27,6 @@ mosquitto_pub -h <host> -p 8884 -t 'scaleSettings' -u <mqtt user> -P '<mqtt pass
 ## Improvements over the forked repo
 * Integrate 2 issues reported by other users: [this](https://github.com/rando-calrissian/esp32_xiaomi_mi_2_hass/issues/3) and [that](https://github.com/rando-calrissian/esp32_xiaomi_mi_2_hass/pull/2/commits/02b5ce7a416f39f3d03ec222934be112e28b3e7d).
 * Slight change in the way detected devices are computed. The newer BLE lib breaks compatibility with the way the original sketch worked, see [this](https://github.com/espressif/arduino-esp32/issues/4627#issuecomment-751400018).
-* ESP32 onboard LED blinking to notify status.
 * Uses new lib as suggested by [that comment](https://github.com/rando-calrissian/esp32_xiaomi_mi_2_hass/issues/1).
 * Better organisation and split user config file, general settings, and code.
+* A number of various improvements.
