@@ -432,6 +432,7 @@ void loop()
 {
   String scaleReading;
   String reading;
+  String inStorage = EEPROM.readString(0);
 
   for (int i = 0; i < POLL_ATTEMPTS; i++)
   {
@@ -440,12 +441,24 @@ void loop()
     {
       Serial.println("Weight not stabilised in last measure");
       delay(TIME_BETWEEN_POLLS);
-      // Reconnect scale. It seems silly to have to re-scan BLE but unless I
-      // do that, I never get a new weigh-in value. Disconnecting/reconnecting
-      // client isn't enough.
       if (i == POLL_ATTEMPTS - 1)
       {
-        Serial.println("No stabilised meaasurement in scale, ending program");
+        Serial.println("No stabilised measurement in scale, ending program");
+        blinkThenSleep(FAILURE);
+      }
+      else
+        // Reconnect scale. It seems silly to have to re-scan BLE but unless I
+        // do that, I never get a new weigh-in value. Disconnecting/reconnecting
+        // client isn't enough.
+        reconnectScale();
+    }
+    else if (reading == inStorage)
+    {
+      Serial.println("Latest value is identical to the latest processed one");
+      delay(TIME_BETWEEN_POLLS);
+      if (i == POLL_ATTEMPTS - 1)
+      {
+        Serial.println("No fresh measurement in scale, ending program");
         blinkThenSleep(FAILURE);
       }
       else
@@ -457,21 +470,10 @@ void loop()
       scaleReading = processScaleData(reading);
       Serial.print("Reading (weight stable): ");
       Serial.println(scaleReading.c_str());
+      EEPROM.writeString(0, reading);
+      EEPROM.commit();
       break;
     }
-  }
-
-  // Is the data already in EEPROM?
-  String inStorage = EEPROM.readString(0);
-  if (reading == inStorage)
-  {
-    Serial.println("Latest value is identical to the latest processed one, ending program");
-    blinkThenSleep(FAILURE);
-  }
-  else
-  {
-    EEPROM.writeString(0, reading);
-    EEPROM.commit();
   }
 
   // Ready to transmit data. WiFi and MQTT should succeed, they have already
