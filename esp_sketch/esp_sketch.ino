@@ -470,8 +470,6 @@ void loop()
       scaleReading = processScaleData(reading);
       Serial.print("Reading (weight stable): ");
       Serial.println(scaleReading.c_str());
-      EEPROM.writeString(0, reading);
-      EEPROM.commit();
       break;
     }
   }
@@ -485,7 +483,11 @@ void loop()
   Serial.println(MQTT_DATA_TOPIC);
   if (mqtt_client.publish(MQTT_DATA_TOPIC, scaleReading.c_str(), true))
   {
-    Serial.println("Success, ending program");
+    Serial.println("Transfer successful");
+    Serial.println("Storing transmitted data to EEPROM");
+    EEPROM.writeString(0, reading);
+    EEPROM.commit();
+    Serial.println("Ending program");
     blinkThenSleep(SUCCESS);
   }
   else
