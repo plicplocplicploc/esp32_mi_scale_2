@@ -2,14 +2,14 @@
 
 // Event durations (milliseconds)
 #define MAX_BLE_SCAN_DURATION 10000
-#define MAX_WIFI_ATTEMPT_DURATION 5000
+#define MAX_WIFI_ATTEMPT_DURATION 8000
 #define TIME_BETWEEN_POLLS 5000 // more will be spent due to BLE re-scan
 #define MQTT_POLL_TIME 1000
 #define DEFAULT_DELAY 100
 
 // Number of attempts
 #define POLL_ATTEMPTS 3
-#define MAX_WIFI_CONNECT_ATTEMPTS 3
+#define MAX_WIFI_CONNECT_ATTEMPTS 4
 
 // Blinking durations (milliseconds)
 #define BLINK_FOR 8000
