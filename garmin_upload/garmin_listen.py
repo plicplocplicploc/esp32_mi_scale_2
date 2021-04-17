@@ -1,9 +1,11 @@
 import datetime
 import paho.mqtt.client as mqtt
+import paho.mqtt.publish as mqttPub
 import json
 import logging
 import logging.config
 import yaml
+import requests
 
 from fit import FitEncoder_Weight
 from garmin import GarminConnect
@@ -13,6 +15,7 @@ from body_metrics import bodyMetrics
 CONFIG = 'config.yml'
 LOGGER_CONFIG = 'logger.yml'
 LOGGER_NAME = 'garmin_connector'
+
 
 # Set up global logger
 with open(LOGGER_CONFIG, 'r') as fp:
@@ -51,7 +54,7 @@ def mqtt_on_message(client, userdata, msg):
     try:
         data = json.loads(msg.payload)
     except json.decoder.JSONDecodeError:
-        logger.info('Could not parse JSON, ignoring')
+        logger.error('Could not parse JSON, ignoring')
         return
 
     height = float(config['garmin']['height'])
@@ -61,7 +64,7 @@ def mqtt_on_message(client, userdata, msg):
     # move on.
     weight = float(data.get('Weight', 0))
     if not weight or not 10 < weight < 200:
-        logger.info('No weight data or weight value bogus, ignoring')
+        logger.error('No weight data or weight value bogus, ignoring')
         return
 
     # Compute metrics if both weight and impedance are present.
@@ -109,11 +112,27 @@ def mqtt_on_message(client, userdata, msg):
     fit.finish()
 
     garmin = GarminConnect()
-    garminSession = garmin.login(
-        config['garmin']['username'], config['garmin']['password'])
+    try:
+        garminSession = garmin.login(
+            config['garmin']['username'], config['garmin']['password'])
+    except requests.exceptions.ConnectionError:
+        logger.error('Could not connect to Garmin Connect')
+        return
+
     req = garmin.upload_file(fit.getvalue(), garminSession)
     if req:
-        logger.info('Upload to Garmin succeeded')
+        logger.info(
+            'Upload to Garmin succeeded, will clear MQTT queue (will result in empty MQTT message)')
+        # Clear MQTT queue
+        mqttPub.single(
+            topic=config['mqtt']['topic'],
+            payload=None,
+            retain=True,
+            hostname=config['mqtt']['host'],
+            port=config['mqtt']['port'],
+            auth={'username': config['mqtt']['username'],
+                  'password': config['mqtt']['password']}
+        )
     else:
         logger.info('Upload to Garmin failed')
 
