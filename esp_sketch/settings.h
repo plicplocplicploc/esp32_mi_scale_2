@@ -8,7 +8,7 @@
 #define DEFAULT_DELAY 100
 
 // Number of attempts
-#define POLL_ATTEMPTS 3
+#define POLL_ATTEMPTS 5
 #define MAX_WIFI_CONNECT_ATTEMPTS 4
 
 // Blinking durations (milliseconds)

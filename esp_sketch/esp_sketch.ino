@@ -70,6 +70,7 @@ void mqttCallback(const char *topic, byte *payload, unsigned int length)
   if (strcmp(topic, MQTT_SETTINGS_TOPIC) != 0 || length == 0)
     return;
 
+  // Clear MQTT settings queue
   char message[length + 1];
   for (int i = 0; i < length; i++)
     message[i] = (char)payload[i];
@@ -212,6 +213,16 @@ bool weightStabilised(String rawDataFromScale)
   // Control bytes are 0 1 2 3, hence the `substring(0, 4)`
   uint16_t controlBytes = strtol(rawDataFromScale.substring(0, 4).c_str(), NULL, 16);
   if ((controlBytes & 0b100000) == 0) // 11th bit out of 16
+    return false;
+  else
+    return true;
+}
+
+bool impedanceStabilised(String rawDataFromScale)
+{
+  // Control bytes are 0 1 2 3, hence the `substring(0, 4)`
+  uint16_t controlBytes = strtol(rawDataFromScale.substring(0, 4).c_str(), NULL, 16);
+  if ((controlBytes & 0b10) == 0) // 15th bit out of 16
     return false;
   else
     return true;
@@ -440,33 +451,52 @@ void loop()
     if (!weightStabilised(reading))
     {
       Serial.println("Weight not stabilised in last measure");
-      delay(TIME_BETWEEN_POLLS);
       if (i == POLL_ATTEMPTS - 1)
       {
-        Serial.println("No stabilised measurement in scale, ending program");
+        Serial.println("No stabilised weight measurement in scale, ending program");
         blinkThenSleep(FAILURE);
       }
       else
+      {
         // Reconnect scale. It seems silly to have to re-scan BLE but unless I
         // do that, I never get a new weigh-in value. Disconnecting/reconnecting
         // client isn't enough.
+        delay(TIME_BETWEEN_POLLS);
         reconnectScale();
+      }
     }
     else if (reading == inStorage)
     {
       Serial.println("Latest value is identical to the latest processed one");
-      delay(TIME_BETWEEN_POLLS);
       if (i == POLL_ATTEMPTS - 1)
       {
         Serial.println("No fresh measurement in scale, ending program");
         blinkThenSleep(FAILURE);
       }
       else
+      {
+        delay(TIME_BETWEEN_POLLS);
         reconnectScale();
+      }
     }
     else
     {
-      // We've got a value with a stabilised weight, considering it's valid
+      // We've got a value with a stabilised weight, if no impedance found then
+      // we try reading again, and stick to the no-impedance figure if no
+      // further success
+      if (!impedanceStabilised(reading))
+      {
+        Serial.println("Weight stabilised but impedance is not stabilised");
+        if (i == POLL_ATTEMPTS - 1)
+        {
+          Serial.println("Got a stable weight but no stable impedance, will proceed with no impedance");
+        }
+        else
+        {
+          delay(TIME_BETWEEN_POLLS);
+          reconnectScale();
+        }
+      }
       scaleReading = processScaleData(reading);
       Serial.print("Reading (weight stable): ");
       Serial.println(scaleReading.c_str());
