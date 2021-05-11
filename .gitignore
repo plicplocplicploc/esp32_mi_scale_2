@@ -8,6 +8,7 @@ output
 usersettings.h
 config.yml
 *.log
+clear_queue
 
 # Python stuff
 __pycache__

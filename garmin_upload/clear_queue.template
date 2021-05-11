@@ -1,0 +1,1 @@
+mosquitto_pub -h <host> -u <user> -P <password> -t scale -n -r

@@ -188,8 +188,6 @@ bool wifiConnect()
 {
   for (int i = 0; i < MAX_WIFI_CONNECT_ATTEMPTS; i++)
   {
-    Serial.print("Attempt ");
-    Serial.println(i + 1);
     uint64_t startTime = millis();
     uint64_t untilTime = startTime + MAX_WIFI_ATTEMPT_DURATION;
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD); // DHCP is just fine
@@ -220,9 +218,12 @@ bool weightStabilised(String rawDataFromScale)
 
 bool impedanceStabilised(String rawDataFromScale)
 {
+  // Return `false` for impedance marked as unstable or negative impedance
+  float impedance = stoi2(rawDataFromScale, 18) * 0.01f;
+
   // Control bytes are 0 1 2 3, hence the `substring(0, 4)`
   uint16_t controlBytes = strtol(rawDataFromScale.substring(0, 4).c_str(), NULL, 16);
-  if ((controlBytes & 0b10) == 0) // 15th bit out of 16
+  if ((controlBytes & 0b10) == 0 || impedance <= 0) // 15th bit out of 16
     return false;
   else
     return true;
@@ -479,30 +480,29 @@ void loop()
         reconnectScale();
       }
     }
-    else
+    else if (!impedanceStabilised(reading))
     {
       // We've got a value with a stabilised weight, if no impedance found then
       // we try reading again, and stick to the no-impedance figure if no
       // further success
-      if (!impedanceStabilised(reading))
+      Serial.println("Weight stabilised but impedance is not stabilised");
+      if (i == POLL_ATTEMPTS - 1)
       {
-        Serial.println("Weight stabilised but impedance is not stabilised");
-        if (i == POLL_ATTEMPTS - 1)
-        {
-          Serial.println("Got a stable weight but no stable impedance, will proceed with no impedance");
-        }
-        else
-        {
-          delay(TIME_BETWEEN_POLLS);
-          reconnectScale();
-        }
+        Serial.println("Got a stable weight but no stable impedance, will proceed with no impedance");
       }
-      scaleReading = processScaleData(reading);
-      Serial.print("Reading (weight stable): ");
-      Serial.println(scaleReading.c_str());
-      break;
+      else
+      {
+        delay(TIME_BETWEEN_POLLS);
+        reconnectScale();
+      }
     }
+    else
+      break;
   }
+
+  scaleReading = processScaleData(reading);
+  Serial.print("Reading (weight stable): ");
+  Serial.println(scaleReading.c_str());
 
   // Ready to transmit data. WiFi and MQTT should succeed, they have already
   // been tested in setup.
