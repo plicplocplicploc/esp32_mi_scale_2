@@ -25,10 +25,15 @@ WiFiClient espClient;
 PubSubClient mqtt_client(espClient);
 bool reconfigRequested = false;
 #define EEPROM_SIZE 27 // size required in EEPROM to store the last valid data
+hw_timer_t *timer = NULL;
 
-// Convenience
-#define SUCCESS true
-#define FAILURE false
+// Now the code
+void IRAM_ATTR resetModule()
+{
+  ets_printf("reboot due to watchdog timeout\n");
+  digitalWrite(ONBOARD_LED, LOW); // that means pull-up low --> LED ON
+  esp_restart();
+}
 
 class MyClientCallback : public BLEClientCallbacks
 {
@@ -169,40 +174,42 @@ int16_t stoi2(String input, uint16_t index1)
   return (int16_t)(strtol((input.substring(index1 + 2, index1 + 4) + input.substring(index1, index1 + 2)).c_str(), NULL, 16));
 }
 
-void blinkThenSleep(bool successStatus)
+void blinkThenSleep(blink blinkStatus)
 {
-  int blinkOn = successStatus ? SUCCESS_BLINK_ON : FAILURE_BLINK_ON;
-  int blinkOff = successStatus ? SUCCESS_BLINK_OFF : FAILURE_BLINK_OFF;
-  uint64_t untilTime = millis() + BLINK_FOR;
+  // `blinkStatus`
+  //   - can be SUCCESS, FAILURE (see settings.h)
+  //   - contains .blinkFor, .blinkOn, .blinkOff
+  uint64_t untilTime = millis() + blinkStatus.blinkFor;
   while (millis() < untilTime)
   {
     digitalWrite(ONBOARD_LED, LOW); // that means pull-up low --> LED ON
-    delay(blinkOn);
+    delay(blinkStatus.blinkOn);
     digitalWrite(ONBOARD_LED, HIGH); // that means pull-up high --> LED OFF
-    delay(blinkOff);
+    delay(blinkStatus.blinkOff);
   }
   esp_deep_sleep_start();
 }
 
 bool wifiConnect()
 {
-  for (int i = 0; i < MAX_WIFI_CONNECT_ATTEMPTS; i++)
-  {
-    uint64_t startTime = millis();
-    uint64_t untilTime = startTime + MAX_WIFI_ATTEMPT_DURATION;
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD); // DHCP is just fine
-    while (millis() < untilTime)
-    {
-      if (WiFi.status() == WL_CONNECTED)
-        return true;
-      else
-        delay(DEFAULT_DELAY);
-    }
-  }
+  timer = timerBegin(0, 80, true);
+  timerAttachInterrupt(timer, &resetModule, true);
+  timerAlarmWrite(timer, 1000 * MAX_WIFI_ATTEMPT_DURATION, true);
+  timerAlarmEnable(timer);
 
-  if (!WiFi.status() == WL_CONNECTED)
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD); // DHCP is just fine
+
+  while (true)
   {
-    return false;
+    // we're covered by the watchdog here
+    if (WiFi.status() == WL_CONNECTED)
+    {
+      timerAlarmDisable(timer);
+      return true;
+    }
+    {
+      delay(DEFAULT_DELAY);
+    }
   }
 }
 

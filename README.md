@@ -11,8 +11,7 @@
 * Listener that uploads data to Garmin Connect.
 
 ## Known problems and to-do
-* NTP sometimes times out... add a watchdog.
-* Occasional crash?
+* Handle all internet calls with a retry mechanism.
 * Add a user weight range in user config and ignore values outside of that range (python side).
 * I haven't touched the `appdaemon` side of things (related to Home Assistant). The `garmin_upload` and `appdaemon` should be merged where possible.
 
