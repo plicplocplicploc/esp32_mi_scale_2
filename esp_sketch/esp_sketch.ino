@@ -197,7 +197,20 @@ bool wifiConnect()
   timerAlarmWrite(timer, 1000 * MAX_WIFI_ATTEMPT_DURATION, true);
   timerAlarmEnable(timer);
 
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD); // DHCP is just fine
+  WiFi.persistent(false);
+  WiFi.mode(WIFI_STA);
+  WiFi.setHostname(HOSTNAME);
+
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  if (!USE_DHCP)
+  {
+    IPAddress ip, gateway, subnet;
+    ip.fromString(IP);
+    gateway.fromString(GATEWAY);
+    subnet.fromString(SUBNET);
+
+    WiFi.config(ip, gateway, subnet);
+  }
 
   while (true)
   {

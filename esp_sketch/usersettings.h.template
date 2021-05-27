@@ -15,11 +15,17 @@
 #define TIMEZONE "Europe/Paris"
 
 // network details
+#define HOSTNAME "esp_xiaomi_scale"
+#define USE_DHCP 0
 #define WIFI_SSID "ssid"
 #define WIFI_PASSWORD "password"
+#define IP "192.168.1.42"
+#define GATEWAY "192.168.1.254"
+#define SUBNET "255.255.255.0"
 
 // MQTT Details
-#define MQTT_SERVER "192.168.15.82" // IP address or hostname
+#define MQTT_SERVER "192.168.1.234" // IP address or hostname, use address \
+                                    // when using static IP
 #define MQTT_PORT 8884
 #define MQTT_SETTINGS_TOPIC "scaleSettings"
 #define MQTT_DATA_TOPIC "scale"
