@@ -209,7 +209,7 @@ bool wifiConnect()
     gateway.fromString(GATEWAY);
     subnet.fromString(SUBNET);
 
-    WiFi.config(ip, gateway, subnet);
+    WiFi.config(ip, gateway, subnet, gateway);
   }
 
   while (true)
