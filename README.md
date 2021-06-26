@@ -13,7 +13,7 @@
 ## Known problems and to-do
 * Handle all internet calls with a retry mechanism.
 * Add a user weight range in user config and ignore values outside of that range (python side).
-* It seems that sometimes the ESP will blink for success but the data hasn't made it to the MQTT queue. Possibly implement a check after the MQTT push.
+* Monitor: MQTT messages somehow didn't always go through. Now using MQTT QOS 1 for comms from ESP to MQTT.
 
 ## How to
 * Have a look at `usersettings.h`; some things can also be tweaked in `settings.h` but that shouldn't be necessary.
