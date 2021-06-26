@@ -38,7 +38,10 @@ def main():
     mqttClient.username_pw_set(
         config['mqtt']['username'], password=config['mqtt']['password'])
     mqttClient.enable_logger(logger=logger)
-    mqttClient.connect(config['mqtt']['host'], config['mqtt']['port'], 60)
+    mqttClient.connect(
+        host=config['mqtt']['host'], 
+        port=config['mqtt']['port'], 
+        keepalive=60)
 
     # And start the MQTT loop!
     mqttClient.loop_forever()
@@ -49,6 +52,34 @@ def mqtt_on_connect(client, userdata, flags, rc):
     client.subscribe(config['mqtt']['topic'])
 
 
+def check_entry_already_processed(data):
+    # https://stackoverflow.com/a/25851972
+    def _ordered(obj):
+        if isinstance(obj, dict):
+            return sorted((k, _ordered(v)) for k, v in obj.items())
+        if isinstance(obj, list):
+            return sorted(_ordered(x) for x in obj)
+        else:
+            return obj
+            
+    try:
+        with open(config['last_ts'], 'r+') as fp:
+            try:
+                last_measure = json.load(fp)
+            except json.decoder.JSONDecodeError:
+                last_measure = None
+
+            if _ordered(last_measure) != _ordered(data):
+                json.dump(data, fp)
+                return False
+            else:
+                return True
+    except FileNotFoundError:
+        with open(config['last_ts'], 'w') as fp:
+            json.dump(data, fp)
+            return False
+
+
 def mqtt_on_message(client, userdata, msg):
     logger.info(f'Received payload: {msg.payload}')
     try:
@@ -56,6 +87,13 @@ def mqtt_on_message(client, userdata, msg):
     except json.decoder.JSONDecodeError:
         logger.error('Could not parse JSON, ignoring')
         return
+
+    # Has this entry been processed before? (MQTT messages are retained)
+    if check_entry_already_processed(data):
+        logger.info('Data is stale, ignoring')
+        return
+    else:
+        logger.info('Data looks fresh, keeping track of it and continuing')
 
     height = float(config['garmin']['height'])
 
@@ -121,18 +159,7 @@ def mqtt_on_message(client, userdata, msg):
 
     req = garmin.upload_file(fit.getvalue(), garminSession)
     if req:
-        logger.info(
-            'Upload to Garmin succeeded, will clear MQTT queue (will result in empty MQTT message)')
-        # Clear MQTT queue
-        mqttPub.single(
-            topic=config['mqtt']['topic'],
-            payload=None,
-            retain=True,
-            hostname=config['mqtt']['host'],
-            port=config['mqtt']['port'],
-            auth={'username': config['mqtt']['username'],
-                  'password': config['mqtt']['password']}
-        )
+        logger.info('Upload to Garmin succeeded')
     else:
         logger.info('Upload to Garmin failed')
 
