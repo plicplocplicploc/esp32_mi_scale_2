@@ -9,6 +9,7 @@
 * Massive code re-write from forked repo, better organised.
 * Now support for scale config.
 * Listener that uploads data to Garmin Connect.
+* Keeps track of all measurements in two files: one full backup, one file to be used as a HA sensor.
 
 ## Known problems and to-do
 * Handle all internet calls with a retry mechanism.
