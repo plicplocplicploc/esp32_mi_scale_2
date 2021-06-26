@@ -354,7 +354,7 @@ void checkReconfigRequested()
 
   // Connect to MQTT
   mqtt_client.setServer(MQTT_IP, MQTT_PORT);
-  if (!mqtt_client.connect(MQTT_CLIENTID, MQTT_USERNAME, MQTT_PASSWORD))
+  if (!mqtt_client.connect(MQTT_CLIENTID, MQTT_USERNAME, MQTT_PASSWORD, 0, 1, 0, 0, 1))
   {
     Serial.println("Cannot connect to MQTT, ending program");
     blinkThenSleep(FAILURE);
@@ -528,7 +528,11 @@ void loop()
   // been tested in setup.
   Serial.println("Connecting to WiFi and MQTT");
   wifiConnect();
-  mqtt_client.connect(MQTT_CLIENTID, MQTT_USERNAME, MQTT_PASSWORD);
+  mqtt_client.connect(MQTT_CLIENTID, MQTT_USERNAME, MQTT_PASSWORD, 0, 1, 0, 0, 1);
+
+  // boolean PubSubClient::connect(const char *id, const char *user, const char *pass) {
+  //   return connect(id,user,pass,0,0,0,0,1);
+
   Serial.print("Publishing data to MQTT queue: ");
   Serial.println(MQTT_DATA_TOPIC);
   if (mqtt_client.publish(MQTT_DATA_TOPIC, scaleReading.c_str(), true))

@@ -8,7 +8,7 @@ import yaml
 import requests
 
 from fit import FitEncoder_Weight
-from garmin import GarminConnect
+from garmin import GarminConnect, APIException
 from body_metrics import bodyMetrics
 
 
@@ -153,7 +153,7 @@ def mqtt_on_message(client, userdata, msg):
     try:
         garminSession = garmin.login(
             config['garmin']['username'], config['garmin']['password'])
-    except requests.exceptions.ConnectionError:
+    except (requests.exceptions.ConnectionError, APIException):
         logger.error('Could not connect to Garmin Connect')
         return
 
