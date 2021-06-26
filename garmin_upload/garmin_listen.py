@@ -39,8 +39,8 @@ def main():
         config['mqtt']['username'], password=config['mqtt']['password'])
     mqttClient.enable_logger(logger=logger)
     mqttClient.connect(
-        host=config['mqtt']['host'], 
-        port=config['mqtt']['port'], 
+        host=config['mqtt']['host'],
+        port=config['mqtt']['port'],
         keepalive=60)
 
     # And start the MQTT loop!
@@ -61,23 +61,19 @@ def check_entry_already_processed(data):
             return sorted(_ordered(x) for x in obj)
         else:
             return obj
-            
-    try:
-        with open(config['last_ts'], 'r+') as fp:
-            try:
-                last_measure = json.load(fp)
-            except json.decoder.JSONDecodeError:
-                last_measure = None
 
-            if _ordered(last_measure) != _ordered(data):
-                json.dump(data, fp)
-                return False
-            else:
-                return True
-    except FileNotFoundError:
+    try:
+        with open(config['last_ts'], 'r') as fp:
+            last_measure = json.load(fp)
+    except (FileNotFoundError, json.decoder.JSONDecodeError):
+        last_measure = None
+
+    if _ordered(last_measure) != _ordered(data):
         with open(config['last_ts'], 'w') as fp:
             json.dump(data, fp)
-            return False
+        return False
+    else:
+        return True
 
 
 def mqtt_on_message(client, userdata, msg):
@@ -124,23 +120,26 @@ def mqtt_on_message(client, userdata, msg):
         # Cannot parse timestamp. Assuming measurement was done just now.
         dt = datetime.datetime.now()
 
+    # Data dict prep
+    metrics_dict = {
+        'timestamp': dt,
+        'weight': metrics.weight,
+        'bmi': metrics.getBMI(),
+        'percent_fat': metrics.getFatPercentage(),
+        'percent_hydration': metrics.getWaterPercentage(),
+        'visceral_fat_mass': metrics.getVisceralFat(),
+        'bone_mass': metrics.getBoneMass(),
+        'muscle_mass': metrics.getMuscleMass(),
+        'basal_met': metrics.getBMR(),
+    }
+
     # Prepare Garmin data object
     fit = FitEncoder_Weight()
     fit.write_file_info()
     fit.write_file_creator()
     fit.write_device_info(timestamp=dt)
     if metrics:
-        fit.write_weight_scale(
-            timestamp=dt,
-            weight=metrics.weight,
-            bmi=metrics.getBMI(),
-            percent_fat=metrics.getFatPercentage(),
-            percent_hydration=metrics.getWaterPercentage(),
-            visceral_fat_mass=metrics.getVisceralFat(),
-            bone_mass=metrics.getBoneMass(),
-            muscle_mass=metrics.getMuscleMass(),
-            basal_met=metrics.getBMR(),
-        )
+        fit.write_weight_scale(**metrics_dict)
     else:
         fit.write_weight_scale(
             timestamp=dt,
@@ -148,6 +147,14 @@ def mqtt_on_message(client, userdata, msg):
             bmi=weight/(height/100)**2
         )
     fit.finish()
+
+    # Local save: HA sensor file (file contains the last entry and that's it)
+
+    with open(config['last_meas'], 'w') as fp:
+        json.dump(metrics_dict, fp, default=str)
+    # Local save: backup
+    with open(config['full_meas'], 'a') as fp:
+        json.dump(metrics_dict, fp, default=str)
 
     garmin = GarminConnect()
     try:

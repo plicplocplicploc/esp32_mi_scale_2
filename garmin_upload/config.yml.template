@@ -11,3 +11,7 @@ mqtt:
   username: mqttUser
   password: mqttPassword
   topic: scale    # leave as is
+
+last_ts: last_ts.json
+last_meas: last_meas.json
+full_meas: full_meas.json
