@@ -69,8 +69,6 @@ def check_entry_already_processed(data):
         last_measure = None
 
     if _ordered(last_measure) != _ordered(data):
-        with open(config['last_ts'], 'w') as fp:
-            json.dump(data, fp)
         return False
     else:
         return True
@@ -89,7 +87,7 @@ def mqtt_on_message(client, userdata, msg):
         logger.info('Data is stale, ignoring')
         return
     else:
-        logger.info('Data looks fresh, keeping track of it and continuing')
+        logger.info('Data looks fresh, continuing')
 
     height = float(config['garmin']['height'])
 
@@ -149,12 +147,23 @@ def mqtt_on_message(client, userdata, msg):
     fit.finish()
 
     # Local save: HA sensor file (file contains the last entry and that's it)
-
     with open(config['last_meas'], 'w') as fp:
         json.dump(metrics_dict, fp, default=str)
-    # Local save: backup
-    with open(config['full_meas'], 'a') as fp:
-        json.dump(metrics_dict, fp, default=str)
+
+    # Local save: full history
+    try:
+        with open(config['full_meas'], 'r') as fp:
+            full_meas = json.load(fp)
+    except FileNotFoundError:
+        full_meas = dict(entries=[])
+
+    if not any(entry['timestamp'] == metrics_dict.pop('timestamp', None)
+               for entry in full_meas['entries']):
+        new_entry = {'timestamp': dt,
+                     'data': metrics_dict}
+        full_meas['entries'].append(new_entry)
+        with open(config['full_meas'], 'w') as fp:
+            json.dump(full_meas, fp, indent=4, default=str)
 
     garmin = GarminConnect()
     try:
@@ -169,6 +178,10 @@ def mqtt_on_message(client, userdata, msg):
         logger.info('Upload to Garmin succeeded')
     else:
         logger.info('Upload to Garmin failed')
+
+    # Local save: last timestamp info (for `check_entry_already_processed`)
+    with open(config['last_ts'], 'w') as fp:
+        json.dump(data, fp)
 
 
 if __name__ == '__main__':

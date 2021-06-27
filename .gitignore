@@ -9,7 +9,9 @@ usersettings.h
 config.yml
 *.log
 clear_queue
-last_ts.json
+data_last_ts.json
+data_last_meas.json
+data_full_meas.json
 
 # Python stuff
 __pycache__
