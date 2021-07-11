@@ -22,8 +22,9 @@ BLERemoteCharacteristic *pScaleConfigurationCharacteristic = NULL;
 Timezone localTime;
 size_t size;
 WiFiClient espClient;
-PubSubClient mqtt_client(espClient);
+PubSubClient mqttClient(espClient);
 bool reconfigRequested = false;
+bool mqttAck = false;
 #define EEPROM_SIZE 27 // size required in EEPROM to store the last valid data
 hw_timer_t *timer = NULL;
 
@@ -72,17 +73,24 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks
 
 void mqttCallback(const char *topic, byte *payload, unsigned int length)
 {
-  if (strcmp(topic, MQTT_SETTINGS_TOPIC) != 0 || length == 0)
+  if (length == 0)
     return;
 
-  // Clear MQTT settings queue
+  // Read payload
   char message[length + 1];
   for (int i = 0; i < length; i++)
     message[i] = (char)payload[i];
   message[length] = '\0';
 
-  if (strcmp(message, CONFIG_TRIGGER_STR) == 0)
+  // Do we have a reconfig request?
+  if (strcmp(topic, MQTT_SETTINGS_TOPIC) == 0 &&
+      strcmp(message, CONFIG_TRIGGER_STR) == 0)
     reconfigRequested = true;
+
+  // Do we have an ack from the other side?
+  else if (strcmp(topic, MQTT_ACK_TOPIC) == 0 &&
+           strcmp(message, "1") == 0)
+    mqttAck = true;
 }
 
 void reconnectScale()
@@ -353,8 +361,8 @@ void checkReconfigRequested()
   }
 
   // Connect to MQTT
-  mqtt_client.setServer(MQTT_IP, MQTT_PORT);
-  if (!mqtt_client.connect(MQTT_CLIENTID, MQTT_USERNAME, MQTT_PASSWORD, 0, 1, 0, 0, 1))
+  mqttClient.setServer(MQTT_IP, MQTT_PORT);
+  if (!mqttClient.connect(MQTT_CLIENTID, MQTT_USERNAME, MQTT_PASSWORD, 0, 1, 0, 0, 1))
   {
     Serial.println("Cannot connect to MQTT, ending program");
     blinkThenSleep(FAILURE);
@@ -362,8 +370,8 @@ void checkReconfigRequested()
   else
     Serial.println("MQTT connected");
 
-  // Subscribe to topic
-  if (!mqtt_client.subscribe(MQTT_SETTINGS_TOPIC))
+  // Subscribe to settings topic
+  if (!mqttClient.subscribe(MQTT_SETTINGS_TOPIC))
   {
     Serial.println("Cannot subscribe to MQTT topic, ending program");
     blinkThenSleep(FAILURE);
@@ -374,14 +382,14 @@ void checkReconfigRequested()
   // Poll topic for a maximum of MQTT_POLL_TIME
   uint64_t startTime = millis();
   uint64_t untilTime = startTime + MQTT_POLL_TIME;
-  mqtt_client.setCallback(mqttCallback);
+  mqttClient.setCallback(mqttCallback);
   while (millis() < untilTime)
   {
-    mqtt_client.loop();
+    mqttClient.loop();
     if (reconfigRequested)
     {
       // Clear queue
-      mqtt_client.publish(MQTT_SETTINGS_TOPIC, NULL, true);
+      mqttClient.publish(MQTT_SETTINGS_TOPIC, NULL, true);
       break;
     }
     delay(DEFAULT_DELAY);
@@ -392,7 +400,7 @@ void checkReconfigRequested()
   else
     Serial.println("Reconfig not requested");
 
-  mqtt_client.disconnect();
+  mqttClient.disconnect();
   Serial.println("MQTT disconnected");
 }
 
@@ -528,25 +536,40 @@ void loop()
   // been tested in setup.
   Serial.println("Connecting to WiFi and MQTT");
   wifiConnect();
-  mqtt_client.connect(MQTT_CLIENTID, MQTT_USERNAME, MQTT_PASSWORD, 0, 1, 0, 0, 1);
+  mqttClient.connect(MQTT_CLIENTID, MQTT_USERNAME, MQTT_PASSWORD);
 
-  // boolean PubSubClient::connect(const char *id, const char *user, const char *pass) {
-  //   return connect(id,user,pass,0,0,0,0,1);
+  Serial.println("Subscribe to MQTT ack topic and set callback");
+  mqttClient.subscribe(MQTT_ACK_TOPIC);
 
+  // First (and hopefully only) MQTT message (this is retained)
   Serial.print("Publishing data to MQTT queue: ");
   Serial.println(MQTT_DATA_TOPIC);
-  if (mqtt_client.publish(MQTT_DATA_TOPIC, scaleReading.c_str(), true))
+  mqttClient.publish(MQTT_DATA_TOPIC, scaleReading.c_str(), true);
+
+  // Poll topic for a maximum of (MQTT_POLL_TIME * POLL_ATTEMPTS)
+  uint64_t startTime = millis();
+  uint64_t untilTime = startTime + (MQTT_POLL_TIME * POLL_ATTEMPTS);
+  mqttClient.setCallback(mqttCallback);
+  while (millis() < untilTime)
   {
-    Serial.println("Transfer successful");
-    Serial.println("Storing transmitted data to EEPROM");
-    EEPROM.writeString(0, reading);
-    EEPROM.commit();
-    Serial.println("Ending program");
-    blinkThenSleep(SUCCESS);
+    mqttClient.loop();
+    if (mqttAck)
+    {
+      Serial.println("Transfer successful");
+      Serial.println("Storing transmitted data to EEPROM");
+      EEPROM.writeString(0, reading);
+      EEPROM.commit();
+      Serial.println("Ending program");
+      blinkThenSleep(SUCCESS);
+    }
+    else
+    {
+      Serial.println("No ack received, waiting then sending message again");
+      delay(MQTT_ACK_DELAY);
+      mqttClient.publish(MQTT_DATA_TOPIC, scaleReading.c_str(), true);
+    }
   }
-  else
-  {
-    Serial.println("Failure");
-    blinkThenSleep(FAILURE);
-  }
+
+  Serial.println("No ack ever received, failure");
+  blinkThenSleep(FAILURE);
 }

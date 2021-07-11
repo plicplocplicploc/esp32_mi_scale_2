@@ -6,6 +6,7 @@
 #define TIME_BETWEEN_POLLS 5000 // more will be spent due to BLE re-scan
 #define MQTT_POLL_TIME 1000
 #define DEFAULT_DELAY 150
+#define MQTT_ACK_DELAY 2000
 
 // Number of attempts
 #define POLL_ATTEMPTS 5

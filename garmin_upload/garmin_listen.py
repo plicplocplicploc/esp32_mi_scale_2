@@ -82,6 +82,15 @@ def mqtt_on_message(client, userdata, msg):
         logger.error('Could not parse JSON, ignoring')
         return
 
+    # At this point, the payload is valid: let's ack
+    mqttPub.single(
+        config['mqtt']['topic_ack'],
+        payload="1",  # TODO: hard-coded, leave as is or ok?
+        hostname=config['mqtt']['host'],
+        port=config['mqtt']['port'],
+        auth={'username': config['mqtt']['username'],
+              'password': config['mqtt']['password']})
+
     # Has this entry been processed before? (MQTT messages are retained)
     if check_entry_already_processed(data):
         logger.info('Data is stale, ignoring')

@@ -28,6 +28,7 @@
 #define MQTT_PORT 8884
 #define MQTT_SETTINGS_TOPIC "scaleSettings"
 #define MQTT_DATA_TOPIC "scale"
+#define MQTT_ACK_TOPIC "scale_ack"
 #define MQTT_USERNAME "mqtt username"
 #define MQTT_PASSWORD "mqtt password"
 #define MQTT_CLIENTID "scaleEsp"
