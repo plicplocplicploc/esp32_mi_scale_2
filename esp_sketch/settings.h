@@ -1,15 +1,17 @@
 // The program should work fine without modifying these
 
 // Event durations (milliseconds)
-#define MAX_BLE_SCAN_DURATION 10000
-#define MAX_WIFI_ATTEMPT_DURATION 4000
-#define TIME_BETWEEN_POLLS 5000 // more will be spent due to BLE re-scan
-#define MQTT_POLL_TIME 1000
 #define DEFAULT_DELAY 150
-#define MQTT_ACK_DELAY 2000
+#define MAX_BLE_SCAN_DURATION 10000
+#define TIME_BETWEEN_BT_POLLS 5000 // more will be spent due to BLE re-scan
+#define MAX_WIFI_ATTEMPT_DURATION 4000
+#define MQTT_POLL_TIME 1000 // used for reconfig and for confirmation of value
+#define MQTT_ACK_DELAY 150 // time spent waiting in confirmation loop
 
 // Number of attempts
-#define POLL_ATTEMPTS 5
+#define BT_POLL_ATTEMPTS 5
+#define MTQT_POLL_ATTEMPTS 15
+
 
 // Blinking durations (milliseconds)
 struct blink

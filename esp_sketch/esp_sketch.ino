@@ -222,7 +222,7 @@ bool wifiConnect()
 
   while (true)
   {
-    // we're covered by the watchdog here
+    // We're covered by the watchdog here
     if (WiFi.status() == WL_CONNECTED)
     {
       timerAlarmDisable(timer);
@@ -474,13 +474,13 @@ void loop()
   String reading;
   String inStorage = EEPROM.readString(0);
 
-  for (int i = 0; i < POLL_ATTEMPTS; i++)
+  for (int i = 0; i < BT_POLL_ATTEMPTS; i++)
   {
     reading = readScaleData();
     if (!weightStabilised(reading))
     {
       Serial.println("Weight not stabilised in last measure");
-      if (i == POLL_ATTEMPTS - 1)
+      if (i == BT_POLL_ATTEMPTS - 1)
       {
         Serial.println("No stabilised weight measurement in scale, ending program");
         blinkThenSleep(FAILURE);
@@ -490,21 +490,21 @@ void loop()
         // Reconnect scale. It seems silly to have to re-scan BLE but unless I
         // do that, I never get a new weigh-in value. Disconnecting/reconnecting
         // client isn't enough.
-        delay(TIME_BETWEEN_POLLS);
+        delay(TIME_BETWEEN_BT_POLLS);
         reconnectScale();
       }
     }
     else if (reading == inStorage)
     {
       Serial.println("Latest value is identical to the latest processed one");
-      if (i == POLL_ATTEMPTS - 1)
+      if (i == BT_POLL_ATTEMPTS - 1)
       {
         Serial.println("No fresh measurement in scale, ending program");
         blinkThenSleep(FAILURE);
       }
       else
       {
-        delay(TIME_BETWEEN_POLLS);
+        delay(TIME_BETWEEN_BT_POLLS);
         reconnectScale();
       }
     }
@@ -514,13 +514,13 @@ void loop()
       // we try reading again, and stick to the no-impedance figure if no
       // further success
       Serial.println("Weight stabilised but impedance is not stabilised");
-      if (i == POLL_ATTEMPTS - 1)
+      if (i == BT_POLL_ATTEMPTS - 1)
       {
         Serial.println("Got a stable weight but no stable impedance, will proceed with no impedance");
       }
       else
       {
-        delay(TIME_BETWEEN_POLLS);
+        delay(TIME_BETWEEN_BT_POLLS);
         reconnectScale();
       }
     }
@@ -546,9 +546,9 @@ void loop()
   Serial.println(MQTT_DATA_TOPIC);
   mqttClient.publish(MQTT_DATA_TOPIC, scaleReading.c_str(), true);
 
-  // Poll topic for a maximum of (MQTT_POLL_TIME * POLL_ATTEMPTS)
+  // Poll topic for a maximum of (MQTT_POLL_TIME * MTQT_POLL_ATTEMPTS)
   uint64_t startTime = millis();
-  uint64_t untilTime = startTime + (MQTT_POLL_TIME * POLL_ATTEMPTS);
+  uint64_t untilTime = startTime + (MQTT_POLL_TIME * MTQT_POLL_ATTEMPTS);
   mqttClient.setCallback(mqttCallback);
   while (millis() < untilTime)
   {
