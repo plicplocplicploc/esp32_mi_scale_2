@@ -85,12 +85,18 @@ void mqttCallback(const char *topic, byte *payload, unsigned int length)
   // Do we have a reconfig request?
   if (strcmp(topic, MQTT_SETTINGS_TOPIC) == 0 &&
       strcmp(message, CONFIG_TRIGGER_STR) == 0)
+  {
+    Serial.println("Reconfig requested");
     reconfigRequested = true;
+  }
 
   // Do we have an ack from the other side?
   else if (strcmp(topic, MQTT_ACK_TOPIC) == 0 &&
            strcmp(message, "1") == 0)
+  {
+    Serial.println("Ack received");
     mqttAck = true;
+  }
 }
 
 void reconnectScale()
@@ -379,9 +385,9 @@ void checkReconfigRequested()
   else
     Serial.println("MQTT settings topic subscribed");
 
-  // Poll topic for a maximum of MQTT_POLL_TIME
+  // Poll topic for a maximum of MQTT_CONF_POLL_TIME
   uint64_t startTime = millis();
-  uint64_t untilTime = startTime + MQTT_POLL_TIME;
+  uint64_t untilTime = startTime + MQTT_CONF_POLL_TIME;
   mqttClient.setCallback(mqttCallback);
   while (millis() < untilTime)
   {
@@ -544,14 +550,15 @@ void loop()
   // First (and hopefully only) MQTT message (this is retained)
   Serial.print("Publishing data to MQTT queue: ");
   Serial.println(MQTT_DATA_TOPIC);
+  uint64_t startTime = millis();
   mqttClient.publish(MQTT_DATA_TOPIC, scaleReading.c_str(), true);
 
-  // Poll topic for a maximum of (MQTT_POLL_TIME * MTQT_POLL_ATTEMPTS)
-  uint64_t startTime = millis();
-  uint64_t untilTime = startTime + (MQTT_POLL_TIME * MTQT_POLL_ATTEMPTS);
+  // Poll topic for a maximum of MQTT_ACK_POLL_TIME
+  uint64_t untilTime = startTime + MQTT_ACK_POLL_TIME;
   mqttClient.setCallback(mqttCallback);
   while (millis() < untilTime)
   {
+    uint64_t currentAttemptUntilTime = startTime + MQTT_RESEND_AFTER;
     mqttClient.loop();
     if (mqttAck)
     {
@@ -562,10 +569,15 @@ void loop()
       Serial.println("Ending program");
       blinkThenSleep(SUCCESS);
     }
-    else
+    else if (millis() <= currentAttemptUntilTime)
     {
-      Serial.println("No ack received, waiting then sending message again");
-      delay(MQTT_ACK_DELAY);
+      Serial.println("No ack received, waiting a bit");
+      delay(DEFAULT_DELAY);
+    }
+    else if (millis() > currentAttemptUntilTime)
+    {
+      Serial.println("No ack received, sending MQTT payload again");
+      currentAttemptUntilTime = millis() + MQTT_RESEND_AFTER;
       mqttClient.publish(MQTT_DATA_TOPIC, scaleReading.c_str(), true);
     }
   }
