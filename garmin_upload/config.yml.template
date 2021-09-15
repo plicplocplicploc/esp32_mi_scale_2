@@ -7,11 +7,14 @@ garmin:
 
 mqtt:
   host: localhost
-  port: 8884
+  port: 1883
   username: mqttUser
   password: mqttPassword
-  topic: scale    # leave as is
+  topic: scale # leave as is
+  topic_ack: scaleAck # leave as is
 
-last_ts: last_ts.json
-last_meas: last_meas.json
-full_meas: full_meas.json
+last_ts: data_last_ts.json
+last_meas: data_last_meas.json
+full_meas: data_full_meas.json
+
+post_weighin:

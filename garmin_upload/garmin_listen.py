@@ -6,6 +6,7 @@ import logging
 import logging.config
 import yaml
 import requests
+import subprocess
 
 from fit import FitEncoder_Weight
 from garmin import GarminConnect, APIException
@@ -15,7 +16,6 @@ from body_metrics import bodyMetrics
 CONFIG = 'config.yml'
 LOGGER_CONFIG = 'logger.yml'
 LOGGER_NAME = 'garmin_connector'
-
 
 # Set up global logger
 with open(LOGGER_CONFIG, 'r') as fp:
@@ -185,6 +185,9 @@ def mqtt_on_message(client, userdata, msg):
     req = garmin.upload_file(fit.getvalue(), garminSession)
     if req:
         logger.info('Upload to Garmin succeeded')
+        if post_weighin := config['post_weighin']:
+            logger.info('Starting post-update script')
+            subprocess.run(post_weighin)
     else:
         logger.info('Upload to Garmin failed')
 
