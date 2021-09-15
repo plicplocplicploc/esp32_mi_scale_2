@@ -185,9 +185,9 @@ def mqtt_on_message(client, userdata, msg):
     req = garmin.upload_file(fit.getvalue(), garminSession)
     if req:
         logger.info('Upload to Garmin succeeded')
-        if post_weighin := config['post_weighin']:
+        if config['post_weighin']:
             logger.info('Starting post-update script')
-            subprocess.run(post_weighin)
+            subprocess.run(config['post_weighin'])
     else:
         logger.info('Upload to Garmin failed')
 
