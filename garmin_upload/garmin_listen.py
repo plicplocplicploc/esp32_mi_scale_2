@@ -6,7 +6,7 @@ import logging
 import logging.config
 import yaml
 import requests
-# import subprocess
+import subprocess
 
 from fit import FitEncoder_Weight
 from garmin import GarminConnect, APIException
@@ -185,9 +185,9 @@ def mqtt_on_message(client, userdata, msg):
     req = garmin.upload_file(fit.getvalue(), garminSession)
     if req:
         logger.info('Upload to Garmin succeeded')
-        # if config['post_weighin']:
-        #     logger.info('Starting post-update script')
-        #     subprocess.run(config['post_weighin'])
+        if config['post_weighin']:
+            logger.info('Starting post-update script')
+            subprocess.run(config['post_weighin'])
     else:
         logger.info('Upload to Garmin failed')
 
