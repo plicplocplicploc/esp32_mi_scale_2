@@ -187,7 +187,7 @@ def mqtt_on_message(client, userdata, msg):
         logger.info('Upload to Garmin succeeded')
         if config['post_weighin']:
             logger.info('Starting post-update script')
-            subprocess.run(config['post_weighin'])
+            subprocess.run(config['post_weighin'], weight)
     else:
         logger.info('Upload to Garmin failed')
 
