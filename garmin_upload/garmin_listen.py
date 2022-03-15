@@ -14,6 +14,8 @@ from body_metrics import bodyMetrics
 
 
 CONFIG = 'config.yml'
+CONFIG_GARMIN_CREDS = '/mnt/ssd/acc_creds/garmin_creds.json'
+CONFIG_MQTT = '/mnt/ssd/acc_creds/mqtt.json'
 LOGGER_CONFIG = 'logger.yml'
 LOGGER_NAME = 'garmin_connector'
 
@@ -28,6 +30,14 @@ logger = logging.getLogger(LOGGER_NAME)
 global config
 with open(CONFIG, 'r') as fp:
     config = yaml.safe_load(fp)
+# Garmin credentials
+with open(CONFIG_GARMIN_CREDS, 'r') as fp:
+    j = json.load(fp)
+    config['garmin'].update(j['garmin_creds'])
+# MQTT credentials
+with open(CONFIG_MQTT, 'r') as fp:
+    j = json.load(fp)
+    config['mqtt'].update(j['mqtt'])
 
 
 def main():
