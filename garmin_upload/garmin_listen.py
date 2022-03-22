@@ -2,9 +2,9 @@ import datetime
 import paho.mqtt.client as mqtt
 import paho.mqtt.publish as mqttPub
 import json
+import yaml
 import logging
 import logging.config
-import yaml
 import requests
 import subprocess
 
