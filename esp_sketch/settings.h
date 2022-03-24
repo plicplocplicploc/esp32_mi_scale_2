@@ -7,7 +7,7 @@
 #define MAX_WIFI_ATTEMPT_DURATION 4000
 #define MQTT_CONF_POLL_TIME 1000 // max time spend polling for reconfig
 #define MQTT_ACK_POLL_TIME 30000 // max time spend polling confirmation
-#define MQTT_RESEND_AFTER 3000
+#define MQTT_RESEND_AFTER 6000
 
 // Number of attempts
 #define BT_POLL_ATTEMPTS 5
