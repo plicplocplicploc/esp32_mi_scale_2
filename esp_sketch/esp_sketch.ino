@@ -556,9 +556,10 @@ void loop()
   // Poll topic for a maximum of MQTT_ACK_POLL_TIME
   uint64_t untilTime = startTime + MQTT_ACK_POLL_TIME;
   mqttClient.setCallback(mqttCallback);
+
+  uint64_t currentAttemptUntilTime = startTime + MQTT_RESEND_AFTER;
   while (millis() < untilTime)
   {
-    uint64_t currentAttemptUntilTime = startTime + MQTT_RESEND_AFTER;
     mqttClient.loop();
     if (mqttAck)
     {
