@@ -99,6 +99,6 @@ if __name__ == "__main__":
         j = json.load(fp)
         config["mqtt"].update(j["mqtt"])
 
-    logger = prepare_logger('mqtt_listen')
+    logger = prepare_logger("mqtt_listen")
 
     main()
