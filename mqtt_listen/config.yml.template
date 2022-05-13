@@ -12,6 +12,7 @@ mqtt:
   password: mqttPassword
   topic: scale # leave as is
   topic_ack: scaleAck # leave as is
+  ack_signal: x # leave as is
 
 full_raw_data: full_raw_data.json
 
