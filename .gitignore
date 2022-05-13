@@ -9,9 +9,9 @@ usersettings.h
 config.yml
 *.log
 clear_queue
-data_last_ts.json
-data_last_meas.json
-data_full_meas.json
+*.json
+esp32_mi_scale_2.service
+*.sqlite3
 
 # Python stuff
 __pycache__

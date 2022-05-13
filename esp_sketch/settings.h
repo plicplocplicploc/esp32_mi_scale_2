@@ -13,6 +13,8 @@
 #define BT_POLL_ATTEMPTS 5
 #define MTQT_POLL_ATTEMPTS 15
 
+// Ack signal
+#define ACK_SIGNAL "X"
 
 // Blinking durations (milliseconds)
 struct blink

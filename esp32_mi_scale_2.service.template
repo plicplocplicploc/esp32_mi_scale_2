@@ -1,0 +1,12 @@
+[Unit]
+Description=esp32_mi_scale_2
+RequiresMountsFor=/mnt/ssd  # depends on your setup
+
+[Service]
+ExecStart=/path/to/location/mqtt_listen/venv/bin/python /path/to/location/mqtt_list/mqtt_listen.py
+WorkingDirectory=/path/to/location/mqtt_listen
+User=<user>
+Type=simple
+
+[Install]
+WantedBy=multi-user.target

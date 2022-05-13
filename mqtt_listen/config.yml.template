@@ -13,8 +13,6 @@ mqtt:
   topic: scale # leave as is
   topic_ack: scaleAck # leave as is
 
-last_ts: data_last_ts.json
-last_meas: data_last_meas.json
-full_meas: data_full_meas.json
+full_raw_data: full_raw_data.json
 
-post_weighin:
+post_weighin: /option/script/that/accepts/args

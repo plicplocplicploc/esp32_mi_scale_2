@@ -6,14 +6,10 @@
 * This [summary](https://github.com/wiecosystem/Bluetooth/blob/master/doc/devices/huami.health.scale2.md#advertisement) and [that other one](https://github.com/wiecosystem/Bluetooth/blob/master/doc/devices/huami.health.scale2.md#advertisement) were useful too.
 
 ## What's new, in a nutshell
-* Massive code re-write from forked repo, better organised.
-* Now support for scale config.
-* Listener that uploads data to Garmin Connect.
-* Keeps track of all measurements in two files: one full backup, one file to be used as a HA sensor.
+* Code re-write from forked repo, better organised.
+* Support for scale config.
 
 ## Known problems and to-do
-* Handle all internet calls with a retry mechanism.
-* Add a user weight range in user config and ignore values outside of that range (python side).
 * Monitor: MQTT messages somehow didn't always go through. Now using a check mechanism to make sure the MQTT payload was actually sent. Can probably be improved.
 
 ## How to
@@ -23,6 +19,7 @@
 ```
 mosquitto_pub -h <host> -p 8884 -t 'scaleSettings' -u <mqtt user> -P '<mqtt password>' -m '1' -r
 ```
+* Spits out scale results in a log file + possibility to pass data to a `post_weighin` script. There is `historical` code that was updating data into Garmin Connect, some of the code will be reusable but it isn't maintained.
 
 ## Improvements over the forked repo
 * Integrate 2 issues reported by other users: [this](https://github.com/rando-calrissian/esp32_xiaomi_mi_2_hass/issues/3) and [that](https://github.com/rando-calrissian/esp32_xiaomi_mi_2_hass/pull/2/commits/02b5ce7a416f39f3d03ec222934be112e28b3e7d).

@@ -92,7 +92,7 @@ void mqttCallback(const char *topic, byte *payload, unsigned int length)
 
   // Do we have an ack from the other side?
   else if (strcmp(topic, MQTT_ACK_TOPIC) == 0 &&
-           strcmp(message, "1") == 0)
+           strcmp(message, ACK_SIGNAL) == 0)
   {
     Serial.println("Ack received");
     mqttAck = true;
