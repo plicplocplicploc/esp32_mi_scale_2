@@ -12,7 +12,7 @@ CONFIG_MQTT = "/mnt/ssd/acc_creds/mqtt.json"
 LOG_LEVEL = logging.INFO
 
 DT_FORMAT_SRC = "%Y %m %d %H %M %S"
-DT_FORMAT_DST = "%Y%m%d"
+DT_FORMAT_DST = "%Y-%m-%d"
 
 
 def prepare_logger(logger_name: str = __name__) -> logging.Logger:
