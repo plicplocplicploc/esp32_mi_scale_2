@@ -12,6 +12,7 @@ clear_queue
 *.json
 esp32_mi_scale_2.service
 *.sqlite3
+reconfigure
 
 # Python stuff
 __pycache__

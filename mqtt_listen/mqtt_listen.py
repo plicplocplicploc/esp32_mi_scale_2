@@ -68,9 +68,23 @@ def mqtt_on_message(client, userdata, msg):
         },
     )
 
-    # Append to full raw backup (mostly for debug)
+    # Prepare payload for backup file. I want it to be json-like to be read
+    # easily by Home Assistant
+    json_payload = str(data).replace("'", '"') + "\n"
+
+    # The data might already be there. In that case, everything that follows
+    # has already been executed, and we can exit here
+    with open(config["full_raw_data"], "r") as fp:
+        last_line = fp.readlines()[-1]
+        if last_line == json_payload:
+            logger.info("Exit now, looks like data has already been processed")
+            return
+
+    # Data should actually be fresh here
+
+    # Append to full raw backup
     with open(config["full_raw_data"], "a") as fp:
-        fp.write(str(data) + "\n")
+        fp.write(json_payload)
 
     weight = float(data.get("Weight"))
     impedance = float(data.get("Impedance"))

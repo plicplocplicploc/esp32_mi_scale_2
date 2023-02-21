@@ -5,8 +5,8 @@
 #define MAX_BLE_SCAN_DURATION 10000
 #define TIME_BETWEEN_BT_POLLS 5000 // more will be spent due to BLE re-scan
 #define MAX_WIFI_ATTEMPT_DURATION 4000
-#define MQTT_CONF_POLL_TIME 1000 // max time spend polling for reconfig
-#define MQTT_ACK_POLL_TIME 20000 // max time spend polling confirmation
+#define MQTT_CONF_POLL_TIME 1000 // max time spent polling for reconfig
+#define MQTT_ACK_POLL_TIME 20000 // max time spent polling confirmation
 #define MQTT_RESEND_AFTER 3000
 
 // Number of attempts
@@ -17,6 +17,7 @@
 #define ACK_SIGNAL "X"
 
 // Blinking durations (milliseconds)
+// 0 to blink forever
 struct blink
 {
   int blinkFor;
@@ -24,7 +25,7 @@ struct blink
   int blinkOff;
 };
 blink SUCCESS = {
-    .blinkFor = 8000,
+    .blinkFor = 0,
     .blinkOn = 900,
     .blinkOff = 100};
 blink FAILURE = {

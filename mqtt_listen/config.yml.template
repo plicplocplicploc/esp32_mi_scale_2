@@ -1,19 +1,8 @@
-garmin:
-  username: xxxxxxx@yyy.zzz
-  password: lasdfkjladsjgf
-  dateOfBirth: yyyy-mm-dd
-  sex: male/female
-  height: 123
-
 mqtt:
-  host: localhost
-  port: 1883
-  username: mqttUser
-  password: mqttPassword
-  topic: scale # leave as is
-  topic_ack: scaleAck # leave as is
-  ack_signal: x # leave as is
+  topic: scale
+  topic_ack: scaleAck
+  ack_signal: X
 
-full_raw_data: full_raw_data.json
+full_raw_data: /mnt/store/perso/07.body.metrics/scale_full_raw_data.json
 
-post_weighin: /option/script/that/accepts/args
+post_weighin: /mnt/store/perso/04.code/strava_scripts/post_weighin.py

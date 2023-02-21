@@ -119,7 +119,7 @@ bool connectScale()
   {
     Serial.print("BODY_COMPOSITION_SERVICE failure, ending program");
     pClient->disconnect();
-    blinkThenSleep(FAILURE);
+    blinkThenFinish(FAILURE);
   }
 
   pBodyCompositionHistoryCharacteristic = pBodyCompositionService->getCharacteristic(BODY_COMPOSITION_HISTORY_CHARACTERISTIC);
@@ -127,10 +127,10 @@ bool connectScale()
   {
     Serial.print("BODY_COMPOSITION_HISTORY_CHARACTERISTIC failure, ending program");
     pClient->disconnect();
-    blinkThenSleep(FAILURE);
+    blinkThenFinish(FAILURE);
   }
 
-  // All those are only required if we need to reconfigure the scale
+  // All those are required only if we need to reconfigure the scale
   if (reconfigRequested)
   {
     pCurrentTimeCharacteristic = pBodyCompositionService->getCharacteristic(CURRENT_TIME_CHARACTERISTIC);
@@ -138,7 +138,7 @@ bool connectScale()
     {
       Serial.print("CURRENT_TIME_CHARACTERISTIC failure, ending program");
       pClient->disconnect();
-      blinkThenSleep(FAILURE);
+      blinkThenFinish(FAILURE);
     }
   }
 
@@ -150,7 +150,7 @@ bool connectScale()
     {
       Serial.print("HUAMI_CONFIGURATION_SERVICE failure, ending program");
       pClient->disconnect();
-      blinkThenSleep(FAILURE);
+      blinkThenFinish(FAILURE);
     }
 
     pScaleConfigurationCharacteristic = pHuamiConfigurationService->getCharacteristic(SCALE_CONFIGURATION_CHARACTERISTIC);
@@ -158,7 +158,7 @@ bool connectScale()
     {
       Serial.print("SCALE_CONFIGURATION_CHARACTERISTIC failure, ending program");
       pClient->disconnect();
-      blinkThenSleep(FAILURE);
+      blinkThenFinish(FAILURE);
     }
   }
 }
@@ -188,20 +188,35 @@ int16_t stoi2(String input, uint16_t index1)
   return (int16_t)(strtol((input.substring(index1 + 2, index1 + 4) + input.substring(index1, index1 + 2)).c_str(), NULL, 16));
 }
 
-void blinkThenSleep(blink blinkStatus)
+void blinkOnce(blink blinkStatus)
 {
-  // `blinkStatus`
-  //   - can be SUCCESS, FAILURE (see settings.h)
+  digitalWrite(ONBOARD_LED, LOW); // that means pull-up low --> LED ON
+  delay(blinkStatus.blinkOn);
+  digitalWrite(ONBOARD_LED, HIGH); // that means pull-up high --> LED OFF
+  delay(blinkStatus.blinkOff);
+}
+
+void blinkThenFinish(blink blinkStatus)
+{
+  // `blinkStatus` (see settings.h)
+  //   - can be SUCCESS, FAILURE
   //   - contains .blinkFor, .blinkOn, .blinkOff
-  uint64_t untilTime = millis() + blinkStatus.blinkFor;
-  while (millis() < untilTime)
+  if (blinkStatus.blinkFor == 0)
   {
-    digitalWrite(ONBOARD_LED, LOW); // that means pull-up low --> LED ON
-    delay(blinkStatus.blinkOn);
-    digitalWrite(ONBOARD_LED, HIGH); // that means pull-up high --> LED OFF
-    delay(blinkStatus.blinkOff);
+    while (true)
+    {
+      blinkOnce(blinkStatus);
+    }
   }
-  esp_deep_sleep_start();
+  else
+  {
+    uint64_t untilTime = millis() + blinkStatus.blinkFor;
+    while (millis() < untilTime)
+    {
+      blinkOnce(blinkStatus);
+    }
+    esp_deep_sleep_start();
+  }
 }
 
 bool wifiConnect()
@@ -272,9 +287,9 @@ String processScaleData(String rawDataFromScale)
   // Control bytes are 0 1 2 3, hence the `substring(0, 4)`
   uint16_t controlBytes = strtol(rawDataFromScale.substring(0, 4).c_str(), NULL, 16);
   String strUnits;
-  // 8th and 10th off: metric
-  // 8th on: catty
-  // 10th on: imperial
+  // 7th off, 9th off: metric
+  // 7th off, 9th on: imperial
+  // 7th on, 9th off: catty
   if ((controlBytes & 0b100000000) == 0 && (controlBytes & 0b1000000) == 0)
   {
     strUnits = "kg";
@@ -330,8 +345,8 @@ void configureScale()
 String readScaleData()
 {
   // It's unclear to me in which circumstances the scale will remember/report
-  // only the latest weigh-in, or a handful of them. In doubt, let's only work
-  // with the latest entry.
+  // only the latest weigh-in, or a handful of them. Therefore, let's work with
+  // the latest entry only.
   int lastEntry = pDiscoveredDevice->getServiceDataCount() - 1;
   std::string md = pDiscoveredDevice->getServiceData(lastEntry);
   uint8_t *mdp = (uint8_t *)pDiscoveredDevice->getServiceData(lastEntry).data();
@@ -348,7 +363,7 @@ void checkReconfigRequested()
     if (!MDNS.begin("ESP32mDNS"))
     {
       Serial.println("Error setting up mDNS responder, ending program");
-      blinkThenSleep(FAILURE);
+      blinkThenFinish(FAILURE);
     }
     else
     {
@@ -356,7 +371,7 @@ void checkReconfigRequested()
       if (!MQTT_IP)
       {
         Serial.println("Cannot resolve MQTT server address, ending program");
-        blinkThenSleep(FAILURE);
+        blinkThenFinish(FAILURE);
       }
       else
       {
@@ -371,7 +386,7 @@ void checkReconfigRequested()
   if (!mqttClient.connect(MQTT_CLIENTID, MQTT_USERNAME, MQTT_PASSWORD, 0, 1, 0, 0, 1))
   {
     Serial.println("Cannot connect to MQTT, ending program");
-    blinkThenSleep(FAILURE);
+    blinkThenFinish(FAILURE);
   }
   else
     Serial.println("MQTT connected");
@@ -380,7 +395,7 @@ void checkReconfigRequested()
   if (!mqttClient.subscribe(MQTT_SETTINGS_TOPIC))
   {
     Serial.println("Cannot subscribe to MQTT topic, ending program");
-    blinkThenSleep(FAILURE);
+    blinkThenFinish(FAILURE);
   }
   else
     Serial.println("MQTT settings topic subscribed");
@@ -424,7 +439,7 @@ void setup()
   if (!wifiConnect())
   {
     Serial.println("Cannot connect to WiFi, ending program");
-    blinkThenSleep(FAILURE);
+    blinkThenFinish(FAILURE);
   }
   else
     Serial.println("WiFi connected");
@@ -455,7 +470,7 @@ void setup()
   else
   {
     Serial.println("Cannot find scale, going to sleep");
-    blinkThenSleep(FAILURE);
+    blinkThenFinish(FAILURE);
   }
 
   // Create BLE client and create service/characteristics objects
@@ -470,7 +485,7 @@ void setup()
   {
     configureScale();
     Serial.println("Reconfig done, ending program");
-    blinkThenSleep(SUCCESS);
+    blinkThenFinish(SUCCESS);
   }
 }
 
@@ -489,7 +504,7 @@ void loop()
       if (i == BT_POLL_ATTEMPTS - 1)
       {
         Serial.println("No stabilised weight measurement in scale, ending program");
-        blinkThenSleep(FAILURE);
+        blinkThenFinish(FAILURE);
       }
       else
       {
@@ -506,7 +521,7 @@ void loop()
       if (i == BT_POLL_ATTEMPTS - 1)
       {
         Serial.println("No fresh measurement in scale, ending program");
-        blinkThenSleep(FAILURE);
+        blinkThenFinish(FAILURE);
       }
       else
       {
@@ -568,7 +583,7 @@ void loop()
       EEPROM.writeString(0, reading);
       EEPROM.commit();
       Serial.println("Ending program");
-      blinkThenSleep(SUCCESS);
+      blinkThenFinish(SUCCESS);
     }
     else if (millis() <= currentAttemptUntilTime)
     {
@@ -584,5 +599,5 @@ void loop()
   }
 
   Serial.println("No ack ever received, failure");
-  blinkThenSleep(FAILURE);
+  blinkThenFinish(FAILURE);
 }
